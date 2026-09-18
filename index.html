@@ -82,6 +82,7 @@
         if (entry.waiter) { const w = entry.waiter; entry.waiter = null; w.reject(new Error("socket closed")); }
         sockets.delete(id);
       },
+      delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); },
       next(id) {
         const entry = sockets.get(id);
         if (!entry) return Promise.reject(new Error("no such socket"));

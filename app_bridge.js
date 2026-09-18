@@ -728,6 +728,34 @@ export class SwiftVisorSocketService {
             throw new SwiftError(failure);
         return promise;
     }
+    delay(milliseconds) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        const callId = nextCallId();
+        Types.int32.encode(w, callId);
+        Types.int32.encode(w, milliseconds);
+        const promise = new Promise((resolve, reject) => {
+            pendingCalls.set(callId, {
+                resolve: resolve,
+                decode: (blob) => {
+                    const failure = errorMessageOf(blob);
+                    if (failure !== null) {
+                        reject(new SwiftError(failure));
+                        return undefined;
+                    }
+                    return undefined;
+                },
+            });
+        });
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 4, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return promise;
+    }
 }
 /** Wraps a consumer-implemented `VisorSocketService` as the ordinal
  * dispatcher Swift's foreign proxy calls (method ordinal leads the
@@ -758,6 +786,15 @@ export function makeDispatcher_VisorSocketService(impl, runtime) {
                     throw new SwiftError("VisorSocketService.next is async and needs a runtime-bound dispatcher");
                 const rt = runtime;
                 Promise.resolve().then(() => impl.next(a0)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
+                return new Uint8Array(0);
+            }
+            case 4: {
+                const callId = Types.int32.decode(r);
+                const a0 = Types.int32.decode(r);
+                if (!runtime)
+                    throw new SwiftError("VisorSocketService.delay is async and needs a runtime-bound dispatcher");
+                const rt = runtime;
+                Promise.resolve().then(() => impl.delay(a0)).then((value) => resumeAsync(rt(), callId, new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0])), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
                 return new Uint8Array(0);
             }
         }
