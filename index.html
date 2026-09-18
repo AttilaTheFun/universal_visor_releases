@@ -32,14 +32,12 @@
 
     // --- The client's services (libraries/visor_services), in the browser ---
 
-    // Settings: localStorage. An https page can only reach the host over
-    // wss://, so the connect form defaults to secure there.
+    // Settings: localStorage.
     const prefix = "visor.";
     const settings = {
       get(key) { return localStorage.getItem(prefix + key) || ""; },
       set(key, value) { if (value) localStorage.setItem(prefix + key, value); else localStorage.removeItem(prefix + key); },
     };
-    settings.set("secure_default", location.protocol === "https:" ? "1" : "");
 
     // Sockets: one WebSocket per id; events queue up and `next` hands them
     // out one at a time ("open", "message <text>", "close <reason>",
@@ -96,8 +94,19 @@
       },
     };
 
+    // HTTPS: fetch; a non-2xx status is an error carrying the body.
+    const http = {
+      async request(method, url, body, authorization) {
+        const r = await fetch(url, { method, headers: { Authorization: "Bearer " + authorization, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body || undefined });
+        const text = await r.text();
+        if (!r.ok) throw new Error("HTTP " + r.status + ": " + text.slice(0, 200));
+        return text;
+      },
+    };
+
     const dependencies = {
       socket: Dependencies.visorSocketService(() => socket),
+      http: Dependencies.visorHTTPService(() => http),
       settings: Dependencies.visorSettingsService(() => settings),
     };
     boot({ canvas: document.getElementById("canvas"), wasmURL: "./app.wasm", rendererName: "react", dependencies })

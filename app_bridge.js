@@ -801,6 +801,87 @@ export function makeDispatcher_VisorSocketService(impl, runtime) {
         throw new SwiftError("unknown VisorSocketService method ordinal");
     };
 }
+export class SwiftVisorHTTPService {
+    handle;
+    runtime;
+    /** @internal Takes ownership of a +1 handle. */
+    constructor(runtime, handle) {
+        this.runtime = runtime;
+        this.handle = handle;
+        registry.register(this, () => runtime.call("swift_ffi_visor_VisorHTTPService_release", handle), this);
+    }
+    /** @internal */
+    borrowHandle() {
+        if (this.handle === 0)
+            throw new Error("VisorHTTPService used after close()");
+        return this.handle;
+    }
+    /** Releases the underlying Swift instance. Idempotent. */
+    close() {
+        if (this.handle !== 0) {
+            registry.unregister(this);
+            this.runtime.call("swift_ffi_visor_VisorHTTPService_release", this.handle);
+            this.handle = 0;
+        }
+    }
+    [Symbol.dispose]() {
+        this.close();
+    }
+    request(method, url, body, authorization) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        const callId = nextCallId();
+        Types.int32.encode(w, callId);
+        Types.string.encode(w, method);
+        Types.string.encode(w, url);
+        Types.string.encode(w, body);
+        Types.string.encode(w, authorization);
+        const promise = new Promise((resolve, reject) => {
+            pendingCalls.set(callId, {
+                resolve: resolve,
+                decode: (blob) => {
+                    const failure = errorMessageOf(blob);
+                    if (failure !== null) {
+                        reject(new SwiftError(failure));
+                        return undefined;
+                    }
+                    return decodeWith(Types.string, blob);
+                },
+            });
+        });
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_VisorHTTPService_invoke", handle, 0, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return promise;
+    }
+}
+/** Wraps a consumer-implemented `VisorHTTPService` as the ordinal
+ * dispatcher Swift's foreign proxy calls (method ordinal leads the
+ * arguments). */
+export function makeDispatcher_VisorHTTPService(impl, runtime) {
+    return (args) => {
+        const r = new BlobReader(args);
+        switch (Types.int32.decode(r)) {
+            case 0: {
+                const callId = Types.int32.decode(r);
+                const a0 = Types.string.decode(r);
+                const a1 = Types.string.decode(r);
+                const a2 = Types.string.decode(r);
+                const a3 = Types.string.decode(r);
+                if (!runtime)
+                    throw new SwiftError("VisorHTTPService.request is async and needs a runtime-bound dispatcher");
+                const rt = runtime;
+                Promise.resolve().then(() => impl.request(a0, a1, a2, a3)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
+                return new Uint8Array(0);
+            }
+        }
+        throw new SwiftError("unknown VisorHTTPService method ordinal");
+    };
+}
 export class SwiftVisorSettingsService {
     handle;
     runtime;
@@ -913,6 +994,18 @@ export const Dependencies = {
             },
         };
     },
+    visorHTTPService: (provide, lazy = true) => {
+        let impl;
+        return {
+            key: "swift_ffi_visor_VisorHTTPService",
+            lazy,
+            dispatcher: (args, runtime) => {
+                if (!impl)
+                    impl = provide();
+                return makeDispatcher_VisorHTTPService(impl, runtime)(args);
+            },
+        };
+    },
     visorSettingsService: (provide, lazy = true) => {
         let impl;
         return {
@@ -1001,10 +1094,11 @@ export class SwiftUI {
         b0.drop();
         b1.drop();
     }
-    installVisorServices(socket, settings) {
+    installVisorServices(socket, http, settings) {
         const f0 = socket instanceof SwiftVisorSocketService ? [socket.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorSocketService(socket, () => this.runtime))];
-        const f1 = settings instanceof SwiftVisorSettingsService ? [settings.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorSettingsService(settings, () => this.runtime))];
-        this.runtime.call("swift_ffi_visor_installVisorServices", f0[0], f0[1], f1[0], f1[1]);
+        const f1 = http instanceof SwiftVisorHTTPService ? [http.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorHTTPService(http, () => this.runtime))];
+        const f2 = settings instanceof SwiftVisorSettingsService ? [settings.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorSettingsService(settings, () => this.runtime))];
+        this.runtime.call("swift_ffi_visor_installVisorServices", f0[0], f0[1], f1[0], f1[1], f2[0], f2[1]);
     }
 }
 /** Instantiates the reactor and returns the bridged API. `wasi`
@@ -1082,6 +1176,7 @@ export async function load(wasm, options) {
     runtime.call("swift_ffi_register_GPUWebHost");
     runtime.call("swift_ffi_register_WebHost");
     runtime.call("swift_ffi_visor_register_VisorSocketService");
+    runtime.call("swift_ffi_visor_register_VisorHTTPService");
     runtime.call("swift_ffi_visor_register_VisorSettingsService");
     return new SwiftUI(runtime);
 }
