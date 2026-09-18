@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Visor</title>
+  <link rel="icon" type="image/png" href="./assets/Visor-1024.png">
+  <link rel="apple-touch-icon" href="./assets/Visor-1024.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Visor">
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; background: light-dark(#fff, rgb(18, 18, 20)); }
+    #canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script src="./runtime/react.production.min.js"></script>
+  <script src="./runtime/react-dom.production.min.js"></script>
+  <script type="module">
+    // Surface uncaught errors on the page (no devtools on a phone).
+    const showError = (message) => {
+      let box = document.getElementById("uui-error");
+      if (!box) { box = document.createElement("pre"); box.id = "uui-error"; box.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;max-height:40%;overflow:auto;margin:0;padding:10px;font:12px monospace;color:#fff;background:#b00;border-radius:8px;z-index:2000;white-space:pre-wrap"; document.body.appendChild(box); }
+      box.textContent += message + "\n";
+    };
+    window.addEventListener("error", (e) => showError((e.message || String(e.error)) + (e.error && e.error.stack ? "\n" + String(e.error.stack).split("\n").slice(0, 6).join("\n") : "")));
+    window.addEventListener("unhandledrejection", (e) => showError("unhandled: " + (e.reason && e.reason.stack ? String(e.reason.stack).split("\n").slice(0, 6).join("\n") : String(e.reason))));
+    import { boot } from "./runtime/boot.js";
+    import { Dependencies } from "./app_bridge.js";
+
+    // --- The client's services (libraries/visor_services), in the browser ---
+
+    // Settings: localStorage. An https page can only reach the host over
+    // wss://, so the connect form defaults to secure there.
+    const prefix = "visor.";
+    const settings = {
+      get(key) { return localStorage.getItem(prefix + key) || ""; },
+      set(key, value) { if (value) localStorage.setItem(prefix + key, value); else localStorage.removeItem(prefix + key); },
+    };
+    settings.set("secure_default", location.protocol === "https:" ? "1" : "");
+
+    // Sockets: one WebSocket per id; events queue up and `next` hands them
+    // out one at a time ("open", "message <text>", "close <reason>",
+    // "error <reason>"), rejecting once the socket is gone.
+    const sockets = new Map();
+    let nextID = 1;
+    const socket = {
+      open(url) {
+        const id = nextID++;
+        const entry = { ws: null, events: [], waiter: null, closed: false };
+        const push = (event) => {
+          if (entry.closed) return;
+          if (entry.waiter) { const w = entry.waiter; entry.waiter = null; w.resolve(event); }
+          else entry.events.push(event);
+        };
+        const finish = () => {
+          entry.closed = true;
+          if (entry.waiter) { const w = entry.waiter; entry.waiter = null; w.reject(new Error("socket closed")); }
+        };
+        try {
+          const ws = new WebSocket(url);
+          entry.ws = ws;
+          ws.onopen = () => push("open");
+          ws.onmessage = (m) => push("message " + (typeof m.data === "string" ? m.data : ""));
+          ws.onerror = () => push("error connection failed");
+          ws.onclose = (e) => { push("close " + (e.reason || ("code " + e.code))); finish(); };
+        } catch (error) {
+          push("error " + String(error));
+          finish();
+        }
+        sockets.set(id, entry);
+        return id;
+      },
+      send(id, text) { const entry = sockets.get(id); if (entry && entry.ws && entry.ws.readyState === 1) entry.ws.send(text); },
+      disconnect(id) {
+        const entry = sockets.get(id);
+        if (!entry) return;
+        try { entry.ws && entry.ws.close(); } catch (_) {}
+        entry.closed = true;
+        if (entry.waiter) { const w = entry.waiter; entry.waiter = null; w.reject(new Error("socket closed")); }
+        sockets.delete(id);
+      },
+      next(id) {
+        const entry = sockets.get(id);
+        if (!entry) return Promise.reject(new Error("no such socket"));
+        if (entry.events.length) {
+          const event = entry.events.shift();
+          if (entry.closed && !entry.events.length) sockets.delete(id);
+          return Promise.resolve(event);
+        }
+        if (entry.closed) { sockets.delete(id); return Promise.reject(new Error("socket closed")); }
+        return new Promise((resolve, reject) => { entry.waiter = { resolve, reject }; });
+      },
+    };
+
+    const dependencies = {
+      socket: Dependencies.visorSocketService(() => socket),
+      settings: Dependencies.visorSettingsService(() => settings),
+    };
+    boot({ canvas: document.getElementById("canvas"), wasmURL: "./app.wasm", rendererName: "react", dependencies })
+      .catch((error) => { document.body.insertAdjacentHTML("beforeend", '<pre id="error"></pre>'); document.getElementById("error").textContent = String(error); });
+  </script>
+</body>
+</html>
