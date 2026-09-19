@@ -1017,6 +1017,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         width, flex: width == null ? 1 : "none",
         minWidth: width == null ? 0 : undefined,
         display: "flex", flexDirection: "column", minHeight: 0,
+        // A content-sized column root sits in the middle (SwiftUI centres a
+        // detail view that is not greedy); greedy roots still stretch.
+        alignItems: "center", justifyContent: "center",
         alignSelf: "stretch", background,
       },
     }, kid);
