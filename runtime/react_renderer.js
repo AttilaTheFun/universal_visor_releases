@@ -70,6 +70,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // Headers as iOS 26 draws them: sentence case, secondary, a step
       // smaller than the rows.
       ".uui-ig-header{padding:22px 16px 8px;font-size:15px;color:rgba(120,120,128,0.95)}" +
+      // Sheet content spans the panel; its own stacks keep their alignment.
+      ".uui-sheet-body>*{align-self:stretch}" +
       // macOS sidebar rows and headers.
       ".uui-sb-row{transition:background-color 0.1s}" +
       ".uui-sb-row:hover:not(.uui-sb-selected){background:rgba(120,120,128,0.12)}" +
@@ -533,6 +535,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const side = { display: "flex", alignItems: "center", minWidth: 64, flex: "0 0 auto" };
     return h("div", { style: bar },
       h("div", { style: side },
+        n.pill && desktop && p.title
+          ? h("span", { key: "lt", style: { fontWeight: 600, fontSize: 15, padding: "0 6px", whiteSpace: "nowrap" } }, p.title)
+          : null,
         p.back === "1"
           ? h("button", { key: "back", className: "uui-bar-item", style: { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: 6 }, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
               symbolSVG(h, "chevron.left", 17, "currentColor", 600, { verticalAlign: "0" }), "Back")
@@ -668,6 +673,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           prominent: p.prominent,
         },
       })));
+    }
+    if (isDesktop() && p.displayMode !== "inline" && p.title && showBar) {
+      rows.push(h("div", { key: "topgap", style: { height: 12, flex: "none" } }));
     }
     if (!inline && p.title) {
       rows.push(h("div", {
@@ -1559,6 +1567,26 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       h("div", { key: "c", ...divProps, style: { ...divProps.style, transform: dx ? `translateX(${dx}px)` : undefined, transition: drag.current.active ? "none" : "transform 0.2s ease-out", background: divProps.style.background || "var(--uui-cell-bg, #fff)" } }, children));
   }
 
+  /// A concatenated Text's spans: `length:flags[:r,g,b,a]` per run, ";"
+  /// between (flags ⊂ b i m u s), applied over the text's own style.
+  function styledRuns(h, text, encoded) {
+    const chars = Array.from(text);
+    let at = 0;
+    return String(encoded).split(";").map((part, i) => {
+      const [len, flags = "", color] = part.split(":");
+      const slice = chars.slice(at, at + Number(len)).join("");
+      at += Number(len);
+      const style = {};
+      if (flags.includes("b")) style.fontWeight = 600;
+      if (flags.includes("i")) style.fontStyle = "italic";
+      if (flags.includes("m")) { style.fontFamily = MONO_FONT; style.fontSize = "0.92em"; }
+      const decorations = [flags.includes("u") ? "underline" : "", flags.includes("s") ? "line-through" : ""].filter(Boolean);
+      if (decorations.length) style.textDecoration = decorations.join(" ");
+      if (color) { const c = color.split(",").map(Number); style.color = `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${c[3] == null ? 1 : c[3]})`; }
+      return h("span", { key: i, style }, slice);
+    });
+  }
+
   function presentation(n, kids) {
     const isAlert = n.style === "alert";
     // Panel chrome colors ride the node, scheme-resolved by the serializer
@@ -1681,7 +1709,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp,
       style: panelStyle,
     }, grabber ? h("div", { key: "grab", style: { alignSelf: "center", width: 36, height: 5, borderRadius: 3, background: "rgba(120,120,128,0.45)", margin: "6px 0 2px", flex: "none" } }) : null,
-       h("div", { key: "body", style: { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflowY: greedy ? "hidden" : "auto" } }, kids)));
+       // The body keeps the home indicator's inset below its last row.
+       h("div", { key: "body", className: "uui-sheet-body", style: { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflowY: greedy ? "hidden" : "auto", "--uui-inset-bottom": compact ? "env(safe-area-inset-bottom, 0px)" : "0px" } }, kids)));
   }
 
   let renderDepth = 0;
@@ -1890,6 +1919,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             return h("span", props, svg);
           }
         }
+        if ((n.params || {}).runs) return h("span", props, styledRuns(h, n.v, n.params.runs));
         return h("span", props, n.v);
       }
       case "spacer":
@@ -2101,7 +2131,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           if (currentListStyle === "sidebar") {
             // macOS sidebar rows: compact, no separators, a rounded accent
             // selection with a white label.
-            s.padding = "5px 10px"; s.minHeight = 28; s.margin = "1px 10px"; s.borderRadius = 6;
+            s.padding = "5px 10px"; s.minHeight = 28; s.margin = "1px 10px"; s.borderRadius = 6; s.width = "calc(100% - 20px)"; s.alignSelf = "flex-start";
             s.boxSizing = "border-box"; s.justifyContent = "center"; s.fontSize = 13;
             props.className = ((props.className || "") + " uui-sb-row" + (selected ? " uui-sb-selected" : "")).trim();
             if (selected) s.background = "var(--uui-tint, #0a84ff)";
