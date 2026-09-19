@@ -550,7 +550,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       h("div", {
         style: {
           flex: 1, textAlign: "center", fontWeight: 600, fontSize: 16,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          // A principal view of the app's own may hang below the bar (a name
+          // pill under an avatar): only words are clipped.
+          overflow: p.principalContent === "1" ? "visible" : "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           // Explicit shrinkability: overflow:hidden already zeroes the flex
           // minimum (the automatic min-size only applies to visible
           // overflow), but state it outright so a future overflow change
@@ -570,7 +572,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             h("span", { style: { fontSize: 12, fontWeight: 400, opacity: 0.6 } }, p.subtitle))
         : principal >= 0 && p.principalContent === "1" && (n.principalView || (kids && kids.length))
         // `.principal` with a view of its own: drawn as the app made it.
-        ? h("div", { key: "principal", className: "uui-principal", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", maxWidth: "100%", fontWeight: 400, color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)" } }, n.principalView || kids[0])
+        ? h("div", { key: "principal", className: "uui-principal", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", maxWidth: "100%", overflow: "visible", fontWeight: 400, color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)" } }, n.principalView || kids[0])
         : principal >= 0
         // `.principal`: a title-styled button (the name, an avatar), no pill.
         ? trailingItem(principal, {
@@ -1797,7 +1799,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // Finite frame bounds: a `.frame(maxWidth: 400)` view is flexible up to
     // the cap (it takes what it is offered, then stops growing).
     const bounds = n.params || {};
-    if (bounds.maxW != null && n.width == null) { s.maxWidth = Number(bounds.maxW); if (!n.expandW) s.width = "100%"; s.boxSizing = "border-box"; }
+    if (bounds.maxW != null && n.width == null) {
+      s.maxWidth = Number(bounds.maxW); if (!n.expandW) s.width = "100%"; s.boxSizing = "border-box";
+      // Capped, it is not greedy any more: it takes up to its cap and sits
+      // where its parent aligns it (SwiftUI centres a `.frame(maxWidth: 320)`
+      // box inside an `.infinity` frame) instead of growing from the edge.
+      s.flexGrow = 0;
+      if (s.alignSelf === "stretch") delete s.alignSelf;
+    }
     if (bounds.maxH != null && n.height == null) { s.maxHeight = Number(bounds.maxH); s.boxSizing = "border-box"; }
     if (bounds.minW != null) s.minWidth = Number(bounds.minW);
     if (bounds.minH != null) s.minHeight = Number(bounds.minH);
