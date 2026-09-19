@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3803299621";
+import { SYMBOLS } from "./symbols.js?v=1220093889";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -1477,7 +1477,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           ...props, type: "button", onClick: openIt,
           style: { ...props.style, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 15, padding: "6px 10px", borderRadius: 10,
             border: "none", background: "rgba(120,120,128,0.14)", color: "inherit", fontFamily: MENU_FONT, cursor: "pointer" },
-        }, [h("span", { key: "l" }, label), h("span", { key: "c", style: { fontSize: 11, opacity: 0.7 } }, "⌃⌄")]);
+        }, p.labelContent === "1" && kids && kids.length
+          ? [h("span", { key: "l", style: { display: "inline-flex", alignItems: "center" } }, kids[0]),
+             h("span", { key: "c", style: { fontSize: 11, opacity: 0.7 } }, "⌃⌄")]
+          : [h("span", { key: "l" }, label), h("span", { key: "c", style: { fontSize: 11, opacity: 0.7 } }, "⌃⌄")]);
       }
       case "datepicker":
         props.type = "date";
@@ -2206,6 +2209,27 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         return h("progress", props);
       case "shape":
       case "gradient": {
+        // `.trim` on a circle: the stroked arc of a ring, drawn as SVG.
+        const trim = (n.params || {}).trim;
+        if (trim && n.shape === "circle" && n.stroke) {
+          const [from, to] = trim.split(",").map(Number);
+          const width = n.strokeWidth || 1;
+          const size = n.width || n.height || 20;
+          const radius = (size - width) / 2;
+          const circumference = 2 * Math.PI * radius;
+          const span = Math.max(0, Math.min(1, (to || 0) - (from || 0)));
+          return h("svg", {
+            ...props,
+            width: size, height: size, viewBox: `0 0 ${size} ${size}`,
+            style: { ...s, display: "block", overflow: "visible" },
+          }, h("circle", {
+            cx: size / 2, cy: size / 2, r: radius,
+            fill: "none", stroke: rgba(n.stroke), strokeWidth: width, strokeLinecap: "round",
+            strokeDasharray: `${circumference * span} ${circumference}`,
+            // SVG starts at 3 o'clock, as SwiftUI's trim does.
+            transform: `rotate(${360 * (from || 0)} ${size / 2} ${size / 2})`,
+          }));
+        }
         if (n.shape === "circle") s.borderRadius = "50%";
         if (n.shape === "capsule") s.borderRadius = 9999;
         if (n.fill) s.background = rgba(n.fill);
