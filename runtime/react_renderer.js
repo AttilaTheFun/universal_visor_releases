@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3834779181";
+import { SYMBOLS } from "./symbols.js?v=1132607014";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -528,6 +528,37 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }, children);
   }
 
+  // The bar row: the title sits centred on the whole bar (an absolute
+  // box), inset by the wider of the two clusters so it never runs under a
+  // Back pill or a trailing glyph — the way iOS centres a title and only
+  // shortens it when the items press in. Measured after layout.
+  function CenteredBar({ style, children }) {
+    const ref = R.useRef(null);
+    const [inset, setInset] = R.useState(64);
+    R.useLayoutEffect(() => {
+      const el = ref.current;
+      if (!el) return undefined;
+      const measure = () => {
+        const kids = el.children;
+        if (kids.length < 3) return;
+        const widest = Math.max(kids[0].getBoundingClientRect().width, kids[2].getBoundingClientRect().width);
+        const next = Math.round(widest) + 8;
+        setInset((current) => (Math.abs(current - next) > 1 ? next : current));
+      };
+      measure();
+      const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+      if (observer) { observer.observe(kids0(el)); observer.observe(kids2(el)); }
+      return () => { if (observer) observer.disconnect(); };
+    });
+    const kids0 = (el) => el.children[0];
+    const kids2 = (el) => el.children[2];
+    const [leading, centre, trailing] = R.Children.toArray(children);
+    return h("div", { ref, style }, leading,
+      h("div", { style: { position: "absolute", left: inset, right: inset, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, pointerEvents: "none" } },
+        h("div", { style: { pointerEvents: "auto", minWidth: 0, maxWidth: "100%", display: "flex", justifyContent: "center" } }, centre)),
+      trailing);
+  }
+
   function navBar(n, kids) {
     const p = n.params || {};
     const dark = p.dark === "1";
@@ -538,7 +569,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const bar = {
       // Three columns with equal sides: the title is centred on the bar,
       // not between clusters of different width (a Back pill and a glyph).
-      display: "grid", gridTemplateColumns: "minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr)", alignItems: "center", width: "100%", height: 52, flex: "none",
+      display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", width: "100%", height: 52, flex: "none",
       boxSizing: "border-box", padding: "0 8px",
       // Transparent, no hairline: the bar is its buttons and title over the
       // content on every canvas (Logan's call for the web apps); a principal
@@ -604,7 +635,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }, itemContent(trailing[i] || "", trailingSymbols[i]));
     // Symmetric side clusters keep the title centered.
     const side = { display: "flex", alignItems: "center", minWidth: 64 };
-    return h("div", { style: bar },
+    return h(CenteredBar, { style: bar },
       h("div", { style: side },
         n.pill && desktop && p.title
           ? h("span", { key: "lt", style: { fontWeight: 600, fontSize: 15, padding: "0 6px", whiteSpace: "nowrap" } }, p.title)
@@ -619,7 +650,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }, itemContent(title, leadingSymbols[i])))),
       h("div", {
         style: {
-          textAlign: "center", fontWeight: 600, fontSize: 16, justifySelf: "center", maxWidth: "100%",
+          textAlign: "center", fontWeight: 600, fontSize: 16,
           // A principal view of the app's own may hang below the bar (a name
           // pill under an avatar): only words are clipped.
           overflow: p.principalContent === "1" ? "visible" : "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
