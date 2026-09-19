@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=2401207005";
+import { SYMBOLS } from "./symbols.js?v=3179124650";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -80,6 +80,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       "html{overscroll-behavior:none;overflow:hidden;height:100%}" +
       "body{overscroll-behavior:none;overflow:hidden;position:fixed;inset:0;width:100%;height:100dvh;margin:0}" +
       "[data-edge-scroll],.uui-sheet-body,[data-uui-scroll]{overscroll-behavior:contain}" +
+      ".uui-no-sep::after{display:none!important}" +
       ".uui-plain-row{position:relative}" +
       ".uui-plain-row::after{content:'';position:absolute;left:16px;right:0;bottom:0;height:1px;background:rgba(120,120,128,0.3)}" +
       ".uui-plain-row:last-child::after{display:none}" +
@@ -764,12 +765,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         style: {
           position: "absolute", top: 0, left: 0, right: 0, zIndex: 5, overflow: "visible",
           paddingTop: "env(safe-area-inset-top, 0px)", boxSizing: "border-box",
-          // No fill, no hairline — but content scrolling under the bar is
-          // frosted so the title and buttons stay legible (the scroll-edge
-          // effect), on every canvas.
-          backdropFilter: "blur(18px) saturate(1.3)", WebkitBackdropFilter: "blur(18px) saturate(1.3)",
         },
-      } : { key: "bar" }, navBar({
+      } : { key: "bar" },
+        // The scroll-edge effect: content passing under the bar is frosted
+        // by a layer of its own that fades out at the bottom, so the bar
+        // has no fill, no hairline and no hard edge over the first row.
+        pinned ? h("div", {
+          key: "frost",
+          style: {
+            position: "absolute", inset: 0, pointerEvents: "none",
+            backdropFilter: "blur(18px) saturate(1.3)", WebkitBackdropFilter: "blur(18px) saturate(1.3)",
+            maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
+            WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
+          },
+        }) : null,
+        navBar({
         edit: n.edit,
         pill,
         onBack: splitBack,
@@ -1302,6 +1312,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // a compact list's rows render, as on an iPhone; "sidebar" in a wide
   // split view's sidebar column; plain rows otherwise).
   let currentListStyle = null;
+  // `.listRowSeparator(.hidden)`: no lines between the rows of this list.
+  let currentListSeparators = true;
   const INSET_TOP = "var(--uui-inset-top, 0px)";
   const INSET_BOTTOM = "var(--uui-inset-bottom, 0px)";
   const edgeScrolls = new WeakSet();
@@ -1896,6 +1908,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     if ((parentAxis === "v" && n.growW) || (parentAxis === "h" && n.growH)) {
       s.alignSelf = "stretch";
     }
+    // A flex child may not shrink below its content by default, so one long
+    // word (a resume command, an address) widens the whole row. SwiftUI
+    // squeezes such a child and lets it truncate; a fixed frame keeps its
+    // size through the minimum set with its width.
+    if (parentAxis === "h" && n.width == null) s.minWidth = 0;
+    if (parentAxis === "v" && n.height == null) s.minHeight = 0;
     // In a ZStack layer, greedy nodes fill the stack (e.g. a shape backdrop).
     if (parentAxis === "z") {
       if (n.growW) s.width = "100%";
@@ -1978,6 +1996,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const plainList = isList && !isDesktop() && (n.params || {}).listStyle === "plain";
     const insetGrouped = isList && !isDesktop() && !plainList;
     const sidebarList = isList && isDesktop() && inSidebar > 0;
+    const previousSeparators = currentListSeparators;
+    if (isList) currentListSeparators = (n.params || {}).separators !== "0";
     const previousListStyle = currentListStyle;
     if (insetGrouped) currentListStyle = "insetGrouped";
     else if (plainList) currentListStyle = "plain";
@@ -1993,6 +2013,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       });
     } finally {
       currentListStyle = previousListStyle;
+      currentListSeparators = previousSeparators;
     }
     if (tabPill) pendingTabPill = null;
 
@@ -2306,15 +2327,15 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             s.boxSizing = "border-box";
             s.justifyContent = "center";
             if (currentListStyle === "insetGrouped") {
-              props.className = ((props.className || "") + " uui-ig-row").trim();
+              props.className = ((props.className || "") + " uui-ig-row" + (currentListSeparators ? "" : " uui-no-sep")).trim();
               if (selected) s.background = "rgba(10,132,255,0.18)";
             } else if (currentListStyle === "plain") {
               // Messages' inbox: the row on the page, a hairline from the
               // text column, a gray highlight for the selected row.
-              props.className = ((props.className || "") + " uui-plain-row").trim();
+              props.className = ((props.className || "") + " uui-plain-row" + (currentListSeparators ? "" : " uui-no-sep")).trim();
               if (selected) s.background = "rgba(120,120,128,0.22)";
             } else {
-              s.borderBottom = "1px solid rgba(120,120,128,0.2)";
+              if (currentListSeparators) s.borderBottom = "1px solid rgba(120,120,128,0.2)";
               if (selected) s.background = "rgba(10,132,255,0.18)";
             }
           }
