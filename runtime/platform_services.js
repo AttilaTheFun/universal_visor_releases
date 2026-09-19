@@ -75,7 +75,37 @@ export function browserPlatformServices(Dependencies, options = {}) {
         async set(value, key) { localStorage.setItem(sandbox + "keychain:" + key, toBase64(value)); },
         async delete(key) { localStorage.removeItem(sandbox + "keychain:" + key); },
       })),
-      analytics: Dependencies.analyticsService(() => ({
+      // One-shot delays.
+    timer: Dependencies.timerService(() => ({
+      delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, Math.max(0, milliseconds))); },
+    })),
+    // OAuth through a popup: the redirect lands on this origin's
+    // `/oauth/callback` (options.oauthCallbackPath), whose page posts
+    // `{ oauthRedirect: location.search }` back with postMessage — or, when
+    // it is same-origin, the popup's own location is read directly.
+    oauth: Dependencies.oauthService(() => ({
+      async redirectURI() { return location.origin + (options.oauthCallbackPath || "/oauth/callback"); },
+      authorize(url) {
+        return new Promise((resolve, reject) => {
+          const popup = window.open(url, "uui-oauth", "width=520,height=680");
+          if (!popup) { reject(new Error("popup blocked")); return; }
+          const prefix = location.origin + (options.oauthCallbackPath || "/oauth/callback");
+          const finish = (query) => { window.removeEventListener("message", onMessage); clearInterval(poll); try { popup.close(); } catch (_) {} resolve(query.replace(/^\?/, "")); };
+          const onMessage = (event) => {
+            if (event.origin === location.origin && event.data && typeof event.data.oauthRedirect === "string") finish(event.data.oauthRedirect);
+          };
+          window.addEventListener("message", onMessage);
+          const poll = setInterval(() => {
+            try {
+              if (popup.closed) { window.removeEventListener("message", onMessage); clearInterval(poll); reject(new Error("cancelled")); return; }
+              const href = popup.location.href;
+              if (href && href.startsWith(prefix)) finish(popup.location.search);
+            } catch (_) { /* cross-origin while at the provider */ }
+          }, 300);
+        });
+      },
+    })),
+    analytics: Dependencies.analyticsService(() => ({
         track(event) { if (options.devlog) console.warn("[analytics]", event); },
       })),
       configuration: Dependencies.configurationService(() => ({
