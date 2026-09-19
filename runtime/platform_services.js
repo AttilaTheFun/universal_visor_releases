@@ -83,7 +83,7 @@ export function browserPlatformServices(Dependencies, options = {}) {
     // `/oauth/callback` (options.oauthCallbackPath), whose page posts
     // `{ oauthRedirect: location.search }` back with postMessage — or, when
     // it is same-origin, the popup's own location is read directly.
-    oauth: Dependencies.oauthService(() => ({
+    oauth: Dependencies.oAuthService(() => ({
       async redirectURI() { return location.origin + (options.oauthCallbackPath || "/oauth/callback"); },
       authorize(url) {
         return new Promise((resolve, reject) => {
