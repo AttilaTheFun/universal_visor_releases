@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=815442018";
+import { SYMBOLS } from "./symbols.js?v=3834779181";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -536,7 +536,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // content (iOS); it takes its material once the title collapses.
     const largeShowing = p.large === "1" && Number(p.inlineAlpha || 1) < 0.5;
     const bar = {
-      display: "flex", alignItems: "center", width: "100%", height: 52, flex: "none",
+      // Three columns with equal sides: the title is centred on the bar,
+      // not between clusters of different width (a Back pill and a glyph).
+      display: "grid", gridTemplateColumns: "minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr)", alignItems: "center", width: "100%", height: 52, flex: "none",
       boxSizing: "border-box", padding: "0 8px",
       // Transparent, no hairline: the bar is its buttons and title over the
       // content on every canvas (Logan's call for the web apps); a principal
@@ -601,7 +603,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           onClick: () => sendEvent(n.edit, `trailingItem:${i}`),
         }, itemContent(trailing[i] || "", trailingSymbols[i]));
     // Symmetric side clusters keep the title centered.
-    const side = { display: "flex", alignItems: "center", minWidth: 64, flex: "0 0 auto" };
+    const side = { display: "flex", alignItems: "center", minWidth: 64 };
     return h("div", { style: bar },
       h("div", { style: side },
         n.pill && desktop && p.title
@@ -617,7 +619,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }, itemContent(title, leadingSymbols[i])))),
       h("div", {
         style: {
-          flex: 1, textAlign: "center", fontWeight: 600, fontSize: 16,
+          textAlign: "center", fontWeight: 600, fontSize: 16, justifySelf: "center", maxWidth: "100%",
           // A principal view of the app's own may hang below the bar (a name
           // pill under an avatar): only words are clipped.
           overflow: p.principalContent === "1" ? "visible" : "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
