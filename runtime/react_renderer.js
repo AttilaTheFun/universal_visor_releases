@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=1132607014";
+import { SYMBOLS } from "./symbols.js?v=1765904266";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -534,28 +534,32 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // shortens it when the items press in. Measured after layout.
   function CenteredBar({ style, children }) {
     const ref = R.useRef(null);
-    const [inset, setInset] = R.useState(64);
+    const titleRef = R.useRef(null);
+    const [insets, setInsets] = R.useState({ left: 64, right: 64 });
     R.useLayoutEffect(() => {
       const el = ref.current;
-      if (!el) return undefined;
+      if (!el || el.children.length < 3) return undefined;
       const measure = () => {
-        const kids = el.children;
-        if (kids.length < 3) return;
-        const widest = Math.max(kids[0].getBoundingClientRect().width, kids[2].getBoundingClientRect().width);
-        const next = Math.round(widest) + 8;
-        setInset((current) => (Math.abs(current - next) > 1 ? next : current));
+        const bar = el.getBoundingClientRect().width;
+        const leftW = Math.round(el.children[0].getBoundingClientRect().width) + 8;
+        const rightW = Math.round(el.children[2].getBoundingClientRect().width) + 8;
+        const title = titleRef.current ? titleRef.current.scrollWidth : 0;
+        // Centred on the bar when the title fits between equal insets;
+        // otherwise it moves over towards the narrower cluster (and then
+        // shortens), the way UIKit places a title next to a Back button.
+        const even = Math.max(leftW, rightW);
+        const next = title + 2 * even <= bar ? { left: even, right: even } : { left: leftW, right: rightW };
+        setInsets((current) => (current.left === next.left && current.right === next.right ? current : next));
       };
       measure();
       const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-      if (observer) { observer.observe(kids0(el)); observer.observe(kids2(el)); }
+      if (observer) { observer.observe(el); observer.observe(el.children[0]); observer.observe(el.children[2]); if (titleRef.current) observer.observe(titleRef.current); }
       return () => { if (observer) observer.disconnect(); };
     });
-    const kids0 = (el) => el.children[0];
-    const kids2 = (el) => el.children[2];
     const [leading, centre, trailing] = R.Children.toArray(children);
     return h("div", { ref, style }, leading,
-      h("div", { style: { position: "absolute", left: inset, right: inset, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, pointerEvents: "none" } },
-        h("div", { style: { pointerEvents: "auto", minWidth: 0, maxWidth: "100%", display: "flex", justifyContent: "center" } }, centre)),
+      h("div", { style: { position: "absolute", left: insets.left, right: insets.right, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, pointerEvents: "none" } },
+        h("div", { ref: titleRef, style: { pointerEvents: "auto", minWidth: 0, maxWidth: "100%", display: "flex", justifyContent: "center" } }, centre)),
       trailing);
   }
 
