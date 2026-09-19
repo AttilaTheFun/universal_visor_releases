@@ -48,6 +48,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       "border:2.5px solid rgba(120,120,128,0.3);border-top-color:rgba(120,120,128,0.9);" +
       "animation:uui-spin 0.8s linear infinite}" +
       ".uui-tap{transition:background-color 0.12s}" +
+      ".uui-bar-item:hover{background:rgba(120,120,128,0.16) !important}" +
+      ".uui-bar-item:active{background:rgba(120,120,128,0.26) !important}" +
       ".uui-tap:active{background-color:rgba(120,120,128,0.18) !important}" +
       ".uui-switch{appearance:none;-webkit-appearance:none;width:44px;height:26px;flex:none;" +
       "border-radius:13px;background:rgba(120,120,128,0.35);position:relative;outline:none;" +
@@ -67,7 +69,16 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       ".uui-ig-row:last-child::after,.uui-ig-row:has(+ .uui-ig-header)::after{display:none}" +
       // Headers as iOS 26 draws them: sentence case, secondary, a step
       // smaller than the rows.
-      ".uui-ig-header{padding:22px 16px 8px;font-size:15px;color:rgba(120,120,128,0.95)}";
+      ".uui-ig-header{padding:22px 16px 8px;font-size:15px;color:rgba(120,120,128,0.95)}" +
+      // macOS sidebar rows and headers.
+      ".uui-sb-row{transition:background-color 0.1s}" +
+      ".uui-sb-row:hover:not(.uui-sb-selected){background:rgba(120,120,128,0.12)}" +
+      ".uui-sb-selected,.uui-sb-selected *{color:#fff !important}" +
+      ".uui-sb-selected svg{color:#fff !important}" +
+      ".uui-sb-header{padding:14px 20px 4px;font-size:11px;font-weight:600;color:rgba(120,120,128,0.9)}" +
+      // Thin, overlay-like scrollbars everywhere (the always-on dark
+      // scrollbar looked like a control).
+      "*{scrollbar-width:thin;scrollbar-color:rgba(120,120,128,0.45) transparent}";
     document.head.appendChild(style);
   }
 
@@ -456,18 +467,29 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   function navBar(n) {
     const p = n.params || {};
     const dark = p.dark === "1";
+    const desktop = isDesktop();
+    // Under a visible large title the bar is just its buttons over the
+    // content (iOS); it takes its material once the title collapses.
+    const largeShowing = p.large === "1" && Number(p.inlineAlpha || 1) < 0.5;
     const bar = {
-      display: "flex", alignItems: "center", width: "100%", height: 44, flex: "none",
+      display: "flex", alignItems: "center", width: "100%", height: desktop ? 52 : 44, flex: "none",
       boxSizing: "border-box", padding: "0 8px",
-      background: dark ? "rgba(28,28,30,0.94)" : "rgba(249,249,249,0.94)",
-      backdropFilter: "blur(8px)",
-      borderBottom: `1px solid ${dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)"}`,
+      background: largeShowing ? "transparent" : (dark ? "rgba(28,28,30,0.94)" : "rgba(249,249,249,0.94)"),
+      backdropFilter: largeShowing ? "none" : "blur(8px)",
+      borderBottom: largeShowing ? "none" : `1px solid ${dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)"}`,
       color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)",
       fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
     };
     // Bar items read as tappable: a tinted pill (fill + radius), like a
     // bordered button, rather than a bare glyph.
-    const button = {
+    // Phone: tinted pills (a bordered button). Desktop: borderless
+    // monochrome items that tint on hover/press, the macOS toolbar's.
+    const button = desktop ? {
+      border: "none", background: "none", color: dark ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.75)", fontSize: 13,
+      fontWeight: 500, cursor: "pointer", padding: "5px 9px", borderRadius: 6, flex: "0 0 auto",
+      minWidth: 28, lineHeight: "18px", margin: "0 1px",
+      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",
+    } : {
       border: "none", background: "rgba(10,132,255,0.12)", color: "var(--uui-tint, #0a84ff)", fontSize: 15,
       fontWeight: 500, cursor: "pointer", padding: "5px 11px", borderRadius: 9, flex: "0 0 auto",
       minWidth: 34, lineHeight: "20px", margin: "0 2px",
@@ -491,7 +513,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const leadingSymbols = split("leadingSymbols");
     const trailingSymbols = split("trailingSymbols");
     // An item whose label is a symbol: a 36px circle with the icon.
-    const circle = { ...button, width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" };
+    const circle = desktop
+      ? { ...button, width: 30, height: 28, minWidth: 30, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }
+      : { ...button, width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" };
     const itemContent = (title, symbol) => (symbol && SYMBOLS[symbol]) ? symbolSVG(h, symbol, 17, "currentColor", 600, { verticalAlign: "0" }) : title;
     const itemStyle = (symbol) => (symbol && SYMBOLS[symbol]) ? circle : button;
     const trailingItem = (i, extra) => segments[i] && segments[i].length
@@ -500,7 +524,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           onSelect: (j) => sendEvent(n.edit, `segment:${i}:${j}`),
         })
       : h("button", {
-          key: `t${i}`,
+          key: `t${i}`, className: "uui-bar-item",
           "aria-label": trailingLabels[i] || undefined,
           style: { ...itemStyle(trailingSymbols[i]), ...(prominent[i] === "1" ? { fontWeight: 600 } : {}), ...(extra || {}) },
           onClick: () => sendEvent(n.edit, `trailingItem:${i}`),
@@ -510,11 +534,11 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     return h("div", { style: bar },
       h("div", { style: side },
         p.back === "1"
-          ? h("button", { key: "back", style: { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: 6 }, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
+          ? h("button", { key: "back", className: "uui-bar-item", style: { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: 6 }, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
               symbolSVG(h, "chevron.left", 17, "currentColor", 600, { verticalAlign: "0" }), "Back")
           : null,
         leading.map((title, i) => h("button", {
-          key: `l${i}`, style: itemStyle(leadingSymbols[i]), "aria-label": leadingLabels[i] || undefined,
+          key: `l${i}`, className: "uui-bar-item", style: itemStyle(leadingSymbols[i]), "aria-label": leadingLabels[i] || undefined,
           onClick: () => sendEvent(n.edit, `leading:${i}`),
         }, itemContent(title, leadingSymbols[i])))),
       h("div", {
@@ -539,9 +563,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             h("span", null, p.title || ""),
             h("span", { style: { fontSize: 12, fontWeight: 400, opacity: 0.6 } }, p.subtitle))
         : principal >= 0
+        // `.principal`: a title-styled button (the name, an avatar), no pill.
         ? trailingItem(principal, {
-            fontWeight: 600, fontSize: 15, padding: "4px 12px",
-            borderRadius: 14, background: dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
+            fontWeight: 600, fontSize: 16, padding: "4px 8px", borderRadius: 8, background: "none",
             color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)",
           })
         : (p.title || "")),
@@ -603,7 +627,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }
     const dark = p.dark === "1";
     const depth = Number(p.depth || 0);
-    const inline = p.displayMode === "inline";
+    const inline = p.displayMode === "inline" || isDesktop();
     const leading = p.leading ? p.leading.split("\n") : [];
     const trailing = p.trailingItems ? p.trailingItems.split("\n") : [];
     // At its root inside a compact split view, this bar carries the split's
@@ -621,7 +645,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         style: {
           position: "absolute", top: 0, left: 0, right: 0, zIndex: 5,
           paddingTop: "env(safe-area-inset-top, 0px)", boxSizing: "border-box",
-          background: BAR_BACKGROUND(dark), backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+          ...(inline ? { background: BAR_BACKGROUND(dark), backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" } : {}),
         },
       } : { key: "bar" }, navBar({
         edit: n.edit,
@@ -1136,8 +1160,17 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   const SEPARATOR = (dark) => dark ? "rgba(84,84,88,0.65)" : "rgba(60,60,67,0.29)";
   const pageDark = () => document.documentElement.dataset.theme === "dark"
     || (!!window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  // The web is a phone when narrow and a desktop when wide: narrow canvases
+  // take the iOS shapes (large titles, 44pt bars, inset-grouped lists,
+  // bottom sheets), wide ones the macOS shapes (an inline title in one
+  // 52px toolbar row, borderless bar buttons, the sidebar list style,
+  // content-sized sheets).
+  const isDesktop = () => window.innerWidth >= 700;
+  // How many split-view sidebar columns enclose the rows being rendered.
+  let inSidebar = 0;
   // The list idiom the rows being rendered belong to ("insetGrouped" while
-  // a compact list's rows render, as on an iPhone; plain rows otherwise).
+  // a compact list's rows render, as on an iPhone; "sidebar" in a wide
+  // split view's sidebar column; plain rows otherwise).
   let currentListStyle = null;
   const INSET_TOP = "var(--uui-inset-top, 0px)";
   const INSET_BOTTOM = "var(--uui-inset-bottom, 0px)";
@@ -1759,13 +1792,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }
     // A compact list renders inset-grouped (iPhone); its rows read the
     // style while they render.
-    const insetGrouped = n.k === "scroll" && !!(n.params || {}).list && window.innerWidth < 700;
+    const isList = n.k === "scroll" && !!(n.params || {}).list;
+    const insetGrouped = isList && !isDesktop();
+    const sidebarList = isList && isDesktop() && inSidebar > 0;
     const previousListStyle = currentListStyle;
     if (insetGrouped) currentListStyle = "insetGrouped";
+    else if (sidebarList) currentListStyle = "sidebar";
+    const isSplit = n.k === "hostView" && n.view === "navsplit";
     let kids;
     try {
-      kids = (n.ch || []).map((c, i) =>
-        render(c, `${i}:${c.k}${c.axis || ""}${c.view || ""}`, childAxis));
+      kids = (n.ch || []).map((c, i) => {
+        // The split's first column is its sidebar.
+        if (isSplit && i === 0) inSidebar++;
+        try { return render(c, `${i}:${c.k}${c.axis || ""}${c.view || ""}`, childAxis); }
+        finally { if (isSplit && i === 0) inSidebar--; }
+      });
     } finally {
       currentListStyle = previousListStyle;
     }
@@ -1825,7 +1866,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         s.color = rgba(n.color);
         s.whiteSpace = "pre-wrap";
         s.fontFamily = (n.params && n.params.mono === "1") ? MONO_FONT : SYSTEM_FONT;
-        if (n.lines) {
+        // `.multilineTextAlignment` reaches the text itself.
+        if (n.alignH === "center") s.textAlign = "center";
+        else if (n.alignH === "trailing") s.textAlign = "right";
+        if (n.lines === 1) {
+          // One line: truncate with an ellipsis (a box clamp lets a long
+          // token overflow the row instead).
+          s.whiteSpace = "nowrap"; s.overflow = "hidden"; s.textOverflow = "ellipsis"; s.minWidth = 0;
+        } else if (n.lines) {
           s.display = "-webkit-box";
           s.WebkitLineClamp = n.lines;
           // `.truncationMode`: CSS only truncates at the end; head/middle fall
@@ -2049,18 +2097,30 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         // chrome — this host's row idiom: comfortable padding, a minimum
         // touch height, and a hairline separator.
         if ((n.params || {}).cell === "row") {
-          s.padding = "11px 16px";
-          s.minHeight = 44;
-          s.boxSizing = "border-box";
-          s.justifyContent = "center";
-          if (currentListStyle === "insetGrouped") {
-            props.className = ((props.className || "") + " uui-ig-row").trim();
+          const selected = (n.params || {}).selected === "1";
+          if (currentListStyle === "sidebar") {
+            // macOS sidebar rows: compact, no separators, a rounded accent
+            // selection with a white label.
+            s.padding = "5px 10px"; s.minHeight = 28; s.margin = "1px 10px"; s.borderRadius = 6;
+            s.boxSizing = "border-box"; s.justifyContent = "center"; s.fontSize = 13;
+            props.className = ((props.className || "") + " uui-sb-row" + (selected ? " uui-sb-selected" : "")).trim();
+            if (selected) s.background = "var(--uui-tint, #0a84ff)";
           } else {
-            s.borderBottom = "1px solid rgba(120,120,128,0.2)";
+            s.padding = "11px 16px";
+            s.minHeight = 44;
+            s.boxSizing = "border-box";
+            s.justifyContent = "center";
+            if (currentListStyle === "insetGrouped") {
+              props.className = ((props.className || "") + " uui-ig-row").trim();
+            } else {
+              s.borderBottom = "1px solid rgba(120,120,128,0.2)";
+            }
+            if (selected) s.background = "rgba(10,132,255,0.18)";
           }
         }
-        if ((n.params || {}).cell === "header" && currentListStyle === "insetGrouped") {
-          props.className = ((props.className || "") + " uui-ig-header").trim();
+        if ((n.params || {}).cell === "header") {
+          if (currentListStyle === "insetGrouped") props.className = ((props.className || "") + " uui-ig-header").trim();
+          else if (currentListStyle === "sidebar") props.className = ((props.className || "") + " uui-sb-header").trim();
         }
         // A GeometryReader wrapper: measure the box the host actually laid
         // out and report it back ("<w>x<h>" on the `.geo` id), so the guest
