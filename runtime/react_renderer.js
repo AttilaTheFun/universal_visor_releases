@@ -12,6 +12,26 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
+import { SYMBOLS } from "./symbols.js";
+
+/// An SF Symbol drawn from the portable table as an inline SVG sized to
+/// the text it stands in (an `Image(systemName:)` is a text node carrying
+/// `params.symbol`); unknown names keep the guest's fallback glyph.
+function symbolSVG(h, name, size, color, weight, extraStyle) {
+  const entry = SYMBOLS[name];
+  if (!entry) return null;
+  const px = Math.round((Number(size) || 17) * 1.15);
+  const bold = Number(weight) >= 600;
+  return h("svg", {
+    viewBox: "0 0 24 24", width: px, height: px, "aria-hidden": "true",
+    fill: entry.fill ? "currentColor" : "none", stroke: "currentColor",
+    strokeWidth: entry.fill ? 1.5 : (bold ? 2.4 : 2), strokeLinecap: "round", strokeLinejoin: "round",
+    style: { display: "inline-block", verticalAlign: "-0.2em", color, flexShrink: 0, ...extraStyle },
+  }, h("path", { key: "d", d: entry.d }),
+     // A filled badge's glyph, in the colour the fill contrasts with.
+     entry.inner ? h("path", { key: "i", d: entry.inner, fill: "none", stroke: "var(--uui-symbol-contrast, #fff)", strokeWidth: 2.2 }) : null);
+}
+
 export function createReactTreeRenderer({ container, sendEvent, assetBase = "assets/", mapSurface = null }) {
   const R = window.React;
   const SYSTEM_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
@@ -45,7 +65,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       ".uui-ig-row:first-child,.uui-ig-header+.uui-ig-row{border-top-left-radius:10px;border-top-right-radius:10px}" +
       ".uui-ig-row:last-child,.uui-ig-row:has(+ .uui-ig-header){border-bottom-left-radius:10px;border-bottom-right-radius:10px}" +
       ".uui-ig-row:last-child::after,.uui-ig-row:has(+ .uui-ig-header)::after{display:none}" +
-      ".uui-ig-header{padding:20px 16px 7px;font-size:13px;text-transform:uppercase;letter-spacing:0.02em;color:rgba(120,120,128,0.9)}";
+      // Headers as iOS 26 draws them: sentence case, secondary, a step
+      // smaller than the rows.
+      ".uui-ig-header{padding:22px 16px 8px;font-size:15px;color:rgba(120,120,128,0.95)}";
     document.head.appendChild(style);
   }
 
@@ -466,6 +488,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // like ✎ / ▶︎ read as "Edit" / "Run" to assistive tech and the tap tool).
     const leadingLabels = split("leadingLabels");
     const trailingLabels = split("trailingLabels");
+    const leadingSymbols = split("leadingSymbols");
+    const trailingSymbols = split("trailingSymbols");
+    // An item whose label is a symbol: a 36px circle with the icon.
+    const circle = { ...button, width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" };
+    const itemContent = (title, symbol) => (symbol && SYMBOLS[symbol]) ? symbolSVG(h, symbol, 17, "currentColor", 600, { verticalAlign: "0" }) : title;
+    const itemStyle = (symbol) => (symbol && SYMBOLS[symbol]) ? circle : button;
     const trailingItem = (i, extra) => segments[i] && segments[i].length
       ? h(Segmented, {
           key: `t${i}`, options: segments[i], selected: segmentSelected[i] || 0, dark, compact: true,
@@ -474,20 +502,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       : h("button", {
           key: `t${i}`,
           "aria-label": trailingLabels[i] || undefined,
-          style: { ...button, ...(prominent[i] === "1" ? { fontWeight: 600 } : {}), ...(extra || {}) },
+          style: { ...itemStyle(trailingSymbols[i]), ...(prominent[i] === "1" ? { fontWeight: 600 } : {}), ...(extra || {}) },
           onClick: () => sendEvent(n.edit, `trailingItem:${i}`),
-        }, trailing[i] || "");
+        }, itemContent(trailing[i] || "", trailingSymbols[i]));
     // Symmetric side clusters keep the title centered.
     const side = { display: "flex", alignItems: "center", minWidth: 64, flex: "0 0 auto" };
     return h("div", { style: bar },
       h("div", { style: side },
         p.back === "1"
-          ? h("button", { key: "back", style: button, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) }, "‹ Back")
+          ? h("button", { key: "back", style: { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: 6 }, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
+              symbolSVG(h, "chevron.left", 17, "currentColor", 600, { verticalAlign: "0" }), "Back")
           : null,
         leading.map((title, i) => h("button", {
-          key: `l${i}`, style: button, "aria-label": leadingLabels[i] || undefined,
+          key: `l${i}`, style: itemStyle(leadingSymbols[i]), "aria-label": leadingLabels[i] || undefined,
           onClick: () => sendEvent(n.edit, `leading:${i}`),
-        }, title))),
+        }, itemContent(title, leadingSymbols[i])))),
       h("div", {
         style: {
           flex: 1, textAlign: "center", fontWeight: 600, fontSize: 16,
@@ -607,6 +636,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           trailingItems: p.trailingItems,
           leadingLabels: p.leadingLabels,
           trailingLabels: p.trailingLabels,
+          leadingSymbols: p.leadingSymbols,
+          trailingSymbols: p.trailingSymbols,
           principal: p.principal,
           segments: p.segments,
           segmentSelected: p.segmentSelected,
@@ -1252,11 +1283,22 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             onSelect: (i) => sendEvent(n.edit, String(i)),
           });
         }
-        props.value = n.view === "picker" ? Number(n.v) || 0 : 0;
-        props.onChange = (e) => sendEvent(n.edit, String(e.target.selectedIndex));
-        props.style = { ...props.style, fontSize: 15, padding: "4px 8px" };
-        return h("select", props,
-          (n.options || []).map((label, i) => h("option", { key: i, value: i }, label)));
+        // A pop-up panel (the platform's menu shape), not a <select>: a
+        // Menu's options are its label then its actions; a picker's are
+        // its choices with the current one checked.
+        const isPicker = n.view === "picker";
+        const options = n.options || [];
+        const selected = isPicker ? Number(n.v) || 0 : -1;
+        const label = isPicker ? (options[selected] || "") : (options[0] || "Menu");
+        const items = isPicker
+          ? options.map((title, i) => ({ title, checked: i === selected, index: i }))
+          : options.slice(1).map((title, i) => ({ title, index: i + 1 }));
+        const openIt = (e) => { e.stopPropagation(); showPopMenu(e.currentTarget, items, (i) => sendEvent(n.edit, String(items[i].index))); };
+        return h("button", {
+          ...props, type: "button", onClick: openIt,
+          style: { ...props.style, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 15, padding: "6px 10px", borderRadius: 10,
+            border: "none", background: "rgba(120,120,128,0.14)", color: "inherit", fontFamily: MENU_FONT, cursor: "pointer" },
+        }, [h("span", { key: "l" }, label), h("span", { key: "c", style: { fontSize: 11, opacity: 0.7 } }, "⌃⌄")]);
       }
       case "datepicker":
         props.type = "date";
@@ -1336,6 +1378,154 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }
   }
 
+  // --- Pop-up menus -------------------------------------------------------
+  // One floating panel at a time, appended to the document (so it escapes
+  // any clipping ancestor), dismissed by a tap outside or Escape. Items:
+  // { title, symbol, destructive, checked }.
+  const MENU_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+  let openMenu = null;
+  function closePopMenu() {
+    if (openMenu) { openMenu.remove(); openMenu = null; }
+    document.removeEventListener("pointerdown", onOutsidePointer, true);
+    document.removeEventListener("keydown", onMenuKey, true);
+  }
+  function onOutsidePointer(e) { if (openMenu && !openMenu.contains(e.target)) closePopMenu(); }
+  function onMenuKey(e) { if (e.key === "Escape") closePopMenu(); }
+  function showPopMenu(anchor, items, onPick) {
+    closePopMenu();
+    const dark = document.documentElement.dataset.theme === "dark"
+      || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "menu");
+    panel.style.cssText = "position:fixed;z-index:60;min-width:200px;max-width:320px;padding:6px 0;border-radius:13px;"
+      + "font-family:" + MENU_FONT + ";font-size:15px;overflow:hidden;"
+      + (dark ? "background:rgba(44,44,46,0.92);color:#fff;" : "background:rgba(250,250,250,0.92);color:#000;")
+      + "backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);"
+      + "box-shadow:0 8px 40px rgba(0,0,0,0.28),0 0 0 0.5px rgba(0,0,0,0.12);";
+    items.forEach((item, i) => {
+      const row = document.createElement("div");
+      row.setAttribute("role", "menuitem");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;user-select:none;"
+        + (item.destructive ? "color:#ff3b30;" : "")
+        + (i > 0 ? (dark ? "border-top:0.5px solid rgba(255,255,255,0.12);" : "border-top:0.5px solid rgba(0,0,0,0.1);") : "");
+      const title = document.createElement("span");
+      title.style.cssText = "flex:1;";
+      title.textContent = item.title;
+      row.appendChild(title);
+      if (item.checked) { const check = document.createElement("span"); check.textContent = "✓"; check.style.cssText = "font-weight:600;"; row.appendChild(check); }
+      else if (item.symbol) { const icon = symbolElement(item.symbol, 18); if (icon) { icon.style.opacity = "0.8"; row.appendChild(icon); } }
+      row.onpointerenter = () => { row.style.background = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"; };
+      row.onpointerleave = () => { row.style.background = ""; };
+      row.onclick = (e) => { e.stopPropagation(); closePopMenu(); onPick(i); };
+      panel.appendChild(row);
+    });
+    document.body.appendChild(panel);
+    // Below the anchor (or at the pointer), kept on screen.
+    const r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: anchor.x, right: anchor.x, top: anchor.y, bottom: anchor.y };
+    const w = panel.offsetWidth, hgt = panel.offsetHeight;
+    let x = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    let y = r.bottom + 6;
+    if (y + hgt > window.innerHeight - 8) y = Math.max(8, r.top - hgt - 6);
+    panel.style.left = x + "px"; panel.style.top = y + "px";
+    openMenu = panel;
+    setTimeout(() => {
+      document.addEventListener("pointerdown", onOutsidePointer, true);
+      document.addEventListener("keydown", onMenuKey, true);
+    }, 0);
+  }
+  function symbolGlyph(name) {
+    const map = { "trash": "🗑", "pencil": "✎", "archivebox": "🗄", "square.and.pencil": "✎", "tray.and.arrow.up": "⤴", "xmark.circle": "⊗", "doc.on.doc": "⧉", "arrow.clockwise": "↻", "checkmark": "✓" };
+    return map[name] || "";
+  }
+  /// A symbol as a detached SVG element (for the imperative pop-up panel).
+  function symbolElement(name, size, color) {
+    const entry = SYMBOLS[name];
+    if (!entry) return null;
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("width", size); svg.setAttribute("height", size);
+    svg.setAttribute("fill", entry.fill ? "currentColor" : "none"); svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", entry.fill ? "1.5" : "2"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+    svg.style.cssText = "display:block;flex-shrink:0;" + (color ? "color:" + color + ";" : "");
+    const path = document.createElementNS(ns, "path"); path.setAttribute("d", entry.d); svg.appendChild(path);
+    if (entry.inner) { const inner = document.createElementNS(ns, "path"); inner.setAttribute("d", entry.inner); inner.setAttribute("fill", "none"); inner.setAttribute("stroke", "#fff"); inner.setAttribute("stroke-width", "2.2"); svg.appendChild(inner); }
+    return svg;
+  }
+  /// Row actions as encoded by the guest: index␞title␞symbol␞d? per item, ␟ between.
+  function decodeRowActions(text) {
+    return String(text || "").split("\u001f").filter(Boolean).map((part) => {
+      const [index, title, symbol, flag] = part.split("\u001e");
+      return { index: Number(index), title, symbol, destructive: flag === "d" };
+    });
+  }
+  /// Long press (450 ms, still) or a secondary click opens the row's menu.
+  function attachContextMenu(props, n) {
+    const items = decodeRowActions(n.params.ctxitems);
+    const open = (x, y) => showPopMenu({ x, y }, items, (i) => sendEvent(n.params.ctxmenu, String(items[i].index)));
+    const prevDown = props.onPointerDown, prevUp = props.onPointerUp, prevClick = props.onClick;
+    let timer = null, fired = false, startX = 0, startY = 0;
+    props.onContextMenu = (e) => { e.preventDefault(); e.stopPropagation(); open(e.clientX, e.clientY); };
+    props.onPointerDown = (e) => {
+      if (prevDown) prevDown(e);
+      if (e.button !== 0) return;
+      fired = false; startX = e.clientX; startY = e.clientY;
+      timer = setTimeout(() => { fired = true; open(startX, startY + 8); }, 450);
+    };
+    props.onPointerMove = (e) => { if (timer && (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8)) { clearTimeout(timer); timer = null; } };
+    const end = (e) => { if (timer) { clearTimeout(timer); timer = null; } if (prevUp) prevUp(e); };
+    props.onPointerUp = end;
+    props.onPointerCancel = end;
+    props.onClick = (e) => { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); return; } if (prevClick) prevClick(e); };
+    props.style = { ...props.style, WebkitTouchCallout: "none", userSelect: "none" };
+  }
+
+  // Swipe actions on a list row: the content slides with a horizontal drag
+  // and the buttons show in the space it leaves; a full swipe performs the
+  // first one. Rows spring back on release short of halfway.
+  function SwipeRow({ n, divProps, children }) {
+    const leading = decodeRowActions((n.params || {}).swipeLeading);
+    const trailing = decodeRowActions((n.params || {}).swipeTrailing);
+    const full = (n.params || {}).swipeFull === "1";
+    const [dx, setDx] = R.useState(0);
+    const drag = R.useRef({ active: false, x: 0, y: 0, decided: false, horizontal: false });
+    const width = 84;
+    const perform = (item) => { setDx(0); sendEvent(n.params.swipe, String(item.index)); };
+    const onDown = (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; drag.current = { active: true, x: e.clientX, y: e.clientY, decided: false, horizontal: false, base: dx }; };
+    const onMove = (e) => {
+      const d = drag.current; if (!d.active) return;
+      const mx = e.clientX - d.x, my = e.clientY - d.y;
+      if (!d.decided) { if (Math.abs(mx) < 6 && Math.abs(my) < 6) return; d.decided = true; d.horizontal = Math.abs(mx) > Math.abs(my); if (d.horizontal) e.currentTarget.setPointerCapture(e.pointerId); }
+      if (!d.horizontal) return;
+      let next = d.base + mx;
+      if (next < 0 && !trailing.length) next = 0;
+      if (next > 0 && !leading.length) next = 0;
+      setDx(next);
+    };
+    const onUp = (e) => {
+      const d = drag.current; if (!d.active) return; d.active = false;
+      const rowWidth = e.currentTarget.getBoundingClientRect().width;
+      if (dx < 0 && trailing.length) {
+        if (full && -dx > rowWidth * 0.6) { perform(trailing[0]); return; }
+        setDx(-dx > width * trailing.length * 0.5 ? -width * trailing.length : 0);
+      } else if (dx > 0 && leading.length) {
+        if (full && dx > rowWidth * 0.6) { perform(leading[0]); return; }
+        setDx(dx > width * leading.length * 0.5 ? width * leading.length : 0);
+      } else setDx(0);
+    };
+    const button = (item, i, side) => h("div", {
+      key: side + i,
+      onClick: (e) => { e.stopPropagation(); perform(item); },
+      style: { width, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: "#fff", fontFamily: MENU_FONT, fontSize: 13, cursor: "pointer",
+        background: item.destructive ? "#ff3b30" : (i === 0 ? (side === "t" ? "#ff9500" : "#34c759") : "#8e8e93") },
+    }, [item.symbol ? (symbolSVG(h, item.symbol, 18, "#fff", 400, { verticalAlign: "0" }) || h("span", { key: "g", style: { fontSize: 18 } }, symbolGlyph(item.symbol))) : null, h("span", { key: "t" }, item.title)]);
+    const outer = { position: "relative", overflow: "hidden", touchAction: "pan-y" };
+    // The buttons exist only while revealed (a closed row is just its content).
+    return h("div", { style: outer, onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp },
+      dx > 0 && leading.length ? h("div", { key: "l", style: { position: "absolute", left: 0, top: 0, bottom: 0, display: "flex", width: dx } }, leading.map((it, i) => button(it, i, "l"))) : null,
+      dx < 0 && trailing.length ? h("div", { key: "r", style: { position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", justifyContent: "flex-end", width: -dx } }, trailing.map((it, i) => button(it, i, "t"))) : null,
+      h("div", { key: "c", ...divProps, style: { ...divProps.style, transform: dx ? `translateX(${dx}px)` : undefined, transition: drag.current.active ? "none" : "transform 0.2s ease-out", background: divProps.style.background || "var(--uui-cell-bg, #fff)" } }, children));
+  }
+
   function presentation(n, kids) {
     const isAlert = n.style === "alert";
     // Panel chrome colors ride the node, scheme-resolved by the serializer
@@ -1369,51 +1559,96 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         },
       }, head), ...kids];
     }
-    // Sheets: Apple's shapes. Regular width → a centered modal card;
-    // compact → a bottom sheet. Greedy content (a NavigationStack / List /
-    // Form — anything that grows) gets an EXPLICIT height so it lays out
-    // and scrolls inside the panel: the scroll node is `flex: 1 1 0`, which
-    // collapses to nothing inside an auto-height panel (the sheet then sat
-    // mostly below the fold). Content-sized sheets (a few buttons) stay auto.
+    // Sheets: Apple's shapes. Compact width → a bottom sheet with a grabber,
+    // sliding up over a scrim, resting at its detents (`.presentationDetents`:
+    // medium = half, large = full, the default), dragged down to dismiss
+    // unless `.interactiveDismissDisabled`. Regular width → a centered
+    // modal card sized to its content (a growing content — a
+    // NavigationStack / List / Form — gets a fixed height so it scrolls
+    // inside). `.fullScreenCover`: the panel IS the screen.
     const compact = window.innerWidth < 700;
     const child = (n.ch || [])[0] || {};
     const greedy = !!child.growH || !!child.expandH;
-    // `.fullScreenCover`: the panel IS the screen.
-    const cover = !!(n.params && n.params.cover === "1");
-    const sheetStyle = cover
+    const params = n.params || {};
+    const cover = !!(params.cover === "1");
+    const detents = (params.detents || "large").split(",");
+    const grabber = params.grabber !== "0" && !cover && compact;
+    const canDismiss = params.nodismiss !== "1" && !cover;
+    if (cover) {
+      return h("div", { style: { position: "fixed", inset: 0, display: "flex", zIndex: 20, background: panelBg, flexDirection: "column", alignItems: "stretch" } }, kids);
+    }
+    if (isAlert) {
+      return h("div", {
+        style: { position: "fixed", inset: 0, display: "flex", zIndex: 20, alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" },
+        onClick: () => sendEvent(n.dismiss, ""),
+      }, h("div", {
+        onClick: (e) => e.stopPropagation(),
+        style: { background: panelBg, borderRadius: 14, minWidth: 280, maxWidth: 420, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", alignItems: "center" },
+      }, kids));
+    }
+    return h(Sheet, { key: n.dismiss, n, kids, compact, greedy, panelBg, detents, grabber, canDismiss });
+  }
+
+  /// The sheet panel with its entrance animation, detents and drag-to-dismiss.
+  function Sheet({ n, kids, compact, greedy, panelBg, detents, grabber, canDismiss }) {
+    const [shown, setShown] = R.useState(false);
+    const [detent, setDetent] = R.useState(detents.includes("medium") ? "medium" : "large");
+    const [dragY, setDragY] = R.useState(0);
+    const drag = R.useRef({ active: false, y: 0, dragging: false });
+    R.useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
+    const dismiss = () => { setShown(false); setTimeout(() => sendEvent(n.dismiss, ""), 220); };
+    const heightFor = (d) => d === "medium" ? "50%" : "calc(100% - max(env(safe-area-inset-top, 0px), 24px))";
+    // The grabber and the sheet's own top edge take the drag; the content
+    // scrolls as usual.
+    const onDown = (e) => { if (!compact) return; drag.current = { active: true, y: e.clientY, dragging: false }; };
+    const onMove = (e) => {
+      const d = drag.current; if (!d.active) return;
+      const dy = e.clientY - d.y;
+      if (!d.dragging) { if (Math.abs(dy) < 6) return; d.dragging = true; e.currentTarget.setPointerCapture(e.pointerId); }
+      setDragY(Math.max(0, dy));
+    };
+    const onUp = () => {
+      const d = drag.current; if (!d.active) return; d.active = false;
+      const h = window.innerHeight;
+      if (dragY > h * 0.18 && (detent === "large" ? (detents.includes("medium") ? false : canDismiss) : canDismiss)) { dismiss(); return; }
+      if (dragY > h * 0.18 && detent === "large" && detents.includes("medium")) { setDetent("medium"); setDragY(0); return; }
+      if (dragY > h * 0.18 && !canDismiss) { setDragY(0); return; }
+      setDragY(0);
+    };
+    const panelStyle = compact
       ? {
-          background: panelBg, width: "100%", height: "100%", boxSizing: "border-box",
-          overflow: "hidden", padding: 0, display: "flex", flexDirection: "column", alignItems: "stretch",
-        }
-      : compact
-      ? {
-          background: panelBg, borderTopLeftRadius: 14, borderTopRightRadius: 14,
-          width: "100%", boxSizing: "border-box",
-          height: greedy ? "calc(100% - 40px)" : "auto", maxHeight: "calc(100% - 40px)",
-          overflowY: "auto", padding: 16, boxShadow: "0 -8px 32px rgba(0,0,0,0.25)",
+          background: panelBg, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+          width: "100%", boxSizing: "border-box", height: heightFor(detent),
+          overflow: "hidden", padding: greedy ? 0 : "8px 16px 16px",
+          boxShadow: "0 -8px 32px rgba(0,0,0,0.25)",
           display: "flex", flexDirection: "column", alignItems: "stretch",
+          transform: shown ? `translateY(${dragY}px)` : "translateY(100%)",
+          transition: drag.current.dragging ? "none" : "transform 0.24s cubic-bezier(0.2,0.8,0.2,1)",
+          paddingBottom: greedy ? 0 : "calc(16px + env(safe-area-inset-bottom, 0px))",
         }
       : {
           background: panelBg, borderRadius: 14, boxSizing: "border-box",
           width: greedy ? "min(560px, calc(100% - 64px))" : "auto",
           minWidth: 280, maxWidth: "min(640px, calc(100% - 64px))",
           height: greedy ? "min(85%, 760px)" : "auto", maxHeight: "calc(100% - 64px)",
-          overflowY: "auto", padding: 16, boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
+          overflow: "hidden", padding: greedy ? 0 : 16, boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
           display: "flex", flexDirection: "column", alignItems: "stretch",
+          transform: shown ? "scale(1)" : "scale(0.96)", opacity: shown ? 1 : 0,
+          transition: "transform 0.18s ease-out, opacity 0.18s ease-out",
         };
     return h("div", {
       style: {
         position: "fixed", inset: 0, display: "flex", zIndex: 20,
-        alignItems: isAlert || !compact ? "center" : "flex-end", justifyContent: "center",
-        background: cover ? "transparent" : "rgba(0,0,0,0.35)",
+        alignItems: compact ? "flex-end" : "center", justifyContent: "center",
+        background: shown ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0)", transition: "background 0.22s",
       },
-      onClick: () => { if (!cover) sendEvent(n.dismiss, ""); },
+      onClick: () => { if (canDismiss) dismiss(); },
     }, h("div", {
       onClick: (e) => e.stopPropagation(),
-      style: isAlert
-        ? { background: panelBg, borderRadius: 14, minWidth: 280, maxWidth: 420, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", alignItems: "center" }
-        : sheetStyle,
-    }, kids));
+      onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp,
+      style: panelStyle,
+    }, grabber ? h("div", { key: "grab", style: { alignSelf: "center", width: 36, height: 5, borderRadius: 3, background: "rgba(120,120,128,0.45)", margin: "6px 0 2px", flex: "none" } }) : null,
+       h("div", { key: "body", style: { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflowY: greedy ? "hidden" : "auto" } }, kids)));
   }
 
   let renderDepth = 0;
@@ -1600,6 +1835,13 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           s.WebkitBoxOrient = "vertical";
           s.overflow = "hidden";
         }
+        if ((n.params || {}).symbol) {
+          const svg = symbolSVG(h, n.params.symbol, n.size, s.color, n.weight);
+          if (svg) {
+            s.display = "inline-flex"; s.alignItems = "center"; s.justifyContent = "center"; s.lineHeight = 1;
+            return h("span", props, svg);
+          }
+        }
         return h("span", props, n.v);
       }
       case "spacer":
@@ -1682,6 +1924,11 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       case "progress":
         if (n.v == null) {
           props.className = ((props.className || "") + " uui-spinner").trim();
+          // `.controlSize`: the small spinner is 16px (Apple's), mini 12.
+          const size = (n.params || {}).size;
+          if (size === "small") { s.width = 16; s.height = 16; s.borderWidth = 2; }
+          else if (size === "mini") { s.width = 12; s.height = 12; s.borderWidth = 1.5; }
+          else if (size === "large") { s.width = 32; s.height = 32; s.borderWidth = 3; }
           return h("div", props);
         }
         props.value = n.v;
@@ -1823,6 +2070,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         if ((n.params || {}).geo) {
           return h(GeometryBox, { key, divProps: props, geoId: n.params.geo }, kids);
         }
+        if ((n.params || {}).ctxmenu) attachContextMenu(props, n);
+        if ((n.params || {}).swipe) return h(SwipeRow, { key, n, divProps: props }, kids);
         return h("div", props, kids);
       }
     }
