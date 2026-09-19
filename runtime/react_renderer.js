@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3179124650";
+import { SYMBOLS } from "./symbols.js?v=1490878299";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -81,6 +81,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       "body{overscroll-behavior:none;overflow:hidden;position:fixed;inset:0;width:100%;height:100dvh;margin:0}" +
       "[data-edge-scroll],.uui-sheet-body,[data-uui-scroll]{overscroll-behavior:contain}" +
       ".uui-no-sep::after{display:none!important}" +
+      // A grouped cell's fill, for a list outside a grouped container too
+      // (the fallback used to be white, which flashed in dark mode).
+      ":root{--uui-cell-bg:#fff;--uui-separator:rgba(60,60,67,0.29)}" +
+      "@media (prefers-color-scheme: dark){:root{--uui-cell-bg:#1c1c1e;--uui-separator:rgba(84,84,88,0.65)}}" +
       ".uui-plain-row{position:relative}" +
       ".uui-plain-row::after{content:'';position:absolute;left:16px;right:0;bottom:0;height:1px;background:rgba(120,120,128,0.3)}" +
       ".uui-plain-row:last-child::after{display:none}" +
