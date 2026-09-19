@@ -72,6 +72,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       ".uui-ig-header{padding:22px 16px 8px;font-size:15px;color:rgba(120,120,128,0.95)}" +
       // Sheet content spans the panel; its own stacks keep their alignment.
       ".uui-sheet-body>*{align-self:stretch}" +
+      ".uui-principal button{color:inherit}" +
       // macOS sidebar rows and headers.
       ".uui-sb-row{transition:background-color 0.1s}" +
       ".uui-sb-row:hover:not(.uui-sb-selected){background:rgba(120,120,128,0.12)}" +
@@ -466,7 +467,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }, label)));
   }
 
-  function navBar(n) {
+  function navBar(n, kids) {
     const p = n.params || {};
     const dark = p.dark === "1";
     const desktop = isDesktop();
@@ -567,6 +568,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         ? h("div", { style: { display: "flex", flexDirection: "column", lineHeight: 1.15 } },
             h("span", null, p.title || ""),
             h("span", { style: { fontSize: 12, fontWeight: 400, opacity: 0.6 } }, p.subtitle))
+        : principal >= 0 && p.principalContent === "1" && (n.principalView || (kids && kids.length))
+        // `.principal` with a view of its own: drawn as the app made it.
+        ? h("div", { key: "principal", className: "uui-principal", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", maxWidth: "100%", fontWeight: 400, color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)" } }, n.principalView || kids[0])
         : principal >= 0
         // `.principal`: a title-styled button (the name, an avatar), no pill.
         ? trailingItem(principal, {
@@ -643,6 +647,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // stationary, extending into the top safe area, with its controls in
     // the 44pt row beneath it; the content flows under it with an inset.
     const pinned = showBar && navStackBarOnly(n);
+    // A second child is the `.principal` item's own view (the bar draws it).
+    const principalView = p.principalContent === "1" && kids && kids.length > 1 ? kids[kids.length - 1] : null;
+    if (principalView) kids = kids.slice(0, -1);
     const rows = [];
     if (showBar) {
       rows.push(h(pinned ? "div" : R.Fragment, pinned ? {
@@ -656,6 +663,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         edit: n.edit,
         pill,
         onBack: splitBack,
+        principalView,
         params: {
           title: inline || !p.title ? (p.title || "") : "",
           subtitle: inline ? (p.subtitle || "") : "",
@@ -668,6 +676,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           leadingSymbols: p.leadingSymbols,
           trailingSymbols: p.trailingSymbols,
           principal: p.principal,
+          principalContent: p.principalContent,
           segments: p.segments,
           segmentSelected: p.segmentSelected,
           prominent: p.prominent,
@@ -1303,7 +1312,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   function hostView(n, props, kids) {
     const p = n.params || {};
     switch (n.view) {
-      case "navbar": return navBar(n);
+      case "navbar": return navBar(n, kids);
       case "tabbar": return tabBar(n);
       case "search":
         return h(TextInput, { n: { ...n, searchStyle: true, placeholder: p.prompt || "" } });
@@ -1694,13 +1703,18 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           height: greedy ? "min(85%, 760px)" : "auto", maxHeight: "calc(100% - 64px)",
           overflow: "hidden", padding: greedy ? 0 : 16, boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
           display: "flex", flexDirection: "column", alignItems: "stretch",
-          transform: shown ? "scale(1)" : "scale(0.96)", opacity: shown ? 1 : 0,
-          transition: "transform 0.18s ease-out, opacity 0.18s ease-out",
+          // Attached under the toolbar, dropping down as on macOS.
+          marginTop: 52,
+          transform: shown ? "translateY(0)" : "translateY(-24px)", opacity: shown ? 1 : 0,
+          transition: "transform 0.2s cubic-bezier(0.2,0.8,0.2,1), opacity 0.18s ease-out",
         };
     return h("div", {
       style: {
-        position: "fixed", inset: 0, display: "flex", zIndex: 20,
-        alignItems: compact ? "flex-end" : "center", justifyContent: "center",
+        // The dynamic viewport: on a phone browser the layout viewport runs
+        // under the collapsed toolbar, and a sheet sized to it would keep
+        // its last rows there.
+        position: "fixed", inset: 0, height: "100dvh", display: "flex", zIndex: 20,
+        alignItems: compact ? "flex-end" : "flex-start", justifyContent: "center",
         background: shown ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0)", transition: "background 0.22s",
       },
       onClick: () => { if (canDismiss) dismiss(); },
@@ -1726,8 +1740,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
 
   function renderNode(n, key, parentAxis) {
     if (n.k === "hostView" && (n.view === "navbar" || n.view === "tabbar")) {
-      // Bars ignore box decorations; they are chrome rows.
-      return h(R.Fragment, { key }, hostView(n, {}, []));
+      // Bars ignore box decorations; they are chrome rows. A bar's child is
+      // a `.principal` item's own view.
+      return h(R.Fragment, { key }, hostView(n, {}, (n.ch || []).map((c, i) => render(c, `${i}:${c.k}`, "h"))));
     }
     if (key === "root") {
       // The root view keeps its own size, centered in the canvas — the way
@@ -1902,6 +1917,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           // One line: truncate with an ellipsis (a box clamp lets a long
           // token overflow the row instead).
           s.whiteSpace = "nowrap"; s.overflow = "hidden"; s.textOverflow = "ellipsis"; s.minWidth = 0;
+          // Never wider than the cell it sits in (a flex item sizes to its
+          // content otherwise and runs past an inset group's edge).
+          s.maxWidth = "100%";
         } else if (n.lines) {
           s.display = "-webkit-box";
           s.WebkitLineClamp = n.lines;
