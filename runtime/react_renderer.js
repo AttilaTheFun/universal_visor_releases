@@ -666,6 +666,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         style: {
           position: "absolute", top: 0, left: 0, right: 0, zIndex: 5, overflow: "visible",
           paddingTop: "env(safe-area-inset-top, 0px)", boxSizing: "border-box",
+          // No fill, no hairline — but content scrolling under the bar is
+          // frosted so the title and buttons stay legible (the scroll-edge
+          // effect), on every canvas.
+          backdropFilter: "blur(18px) saturate(1.3)", WebkitBackdropFilter: "blur(18px) saturate(1.3)",
         },
       } : { key: "bar" }, navBar({
         edit: n.edit,
