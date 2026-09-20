@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3725129940";
+import { SYMBOLS } from "./symbols.js?v=2276410491";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
