@@ -12,9 +12,9 @@
 //
 // The shared runtime (swift_ffi/runtime/ts) is staged next to this file
 // by the wasm library macro; bridges in one directory share the one copy.
-import { BlobReader, BlobWriter, Runtime, SwiftError, Tags, Types, decodeWith, decoder, encodeError, encodeErrorBlob, encodeWith, errorMessageOf, foreignObjects, nextCallId, pendingCalls, registerForeign, registry, resumeAsync, stageBytes, stageString, takeBytes, wasiShim, } from "./swift_ffi_runtime.js?v=1021377583";
+import { BlobReader, BlobWriter, Runtime, SwiftError, Tags, Types, decodeWith, decoder, encodeError, encodeErrorBlob, encodeWith, errorMessageOf, foreignObjects, nextCallId, pendingCalls, registerForeign, registry, resumeAsync, stageBytes, stageString, takeBytes, wasiShim, } from "./swift_ffi_runtime.js?v=3080610332";
 // Re-exported so consumers keep importing them from this module.
-export { Types } from "./swift_ffi_runtime.js?v=1021377583";
+export { Types } from "./swift_ffi_runtime.js?v=3080610332";
 /** The runtime type token for `TextMetrics` (generic calls). */
 export const TextMetricsType = {
     encode(w, v) {
@@ -80,7 +80,7 @@ export const StoredValueType = {
         return { exists, contents };
     },
 };
-export const VisorDependencyKeyType = {
+export const BridgeKeyType = {
     encode(w, v) {
         Types.string.encode(w, v);
     },
@@ -88,6 +88,326 @@ export const VisorDependencyKeyType = {
         return Types.string.decode(r);
     },
 };
+export class SwiftSocketBridge {
+    handle;
+    runtime;
+    /** @internal Takes ownership of a +1 handle. */
+    constructor(runtime, handle) {
+        this.runtime = runtime;
+        this.handle = handle;
+        registry.register(this, () => runtime.call("swift_ffi_visor_SocketBridge_release", handle), this);
+    }
+    /** @internal */
+    borrowHandle() {
+        if (this.handle === 0)
+            throw new Error("SocketBridge used after close()");
+        return this.handle;
+    }
+    /** Releases the underlying Swift instance. Idempotent. */
+    close() {
+        if (this.handle !== 0) {
+            registry.unregister(this);
+            this.runtime.call("swift_ffi_visor_SocketBridge_release", this.handle);
+            this.handle = 0;
+        }
+    }
+    [Symbol.dispose]() {
+        this.close();
+    }
+    open(url) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        Types.string.encode(w, url);
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SocketBridge_invoke", handle, 0, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return decodeWith(Types.int32, result);
+    }
+    send(id, text) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        Types.int32.encode(w, id);
+        Types.string.encode(w, text);
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SocketBridge_invoke", handle, 1, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+    }
+    disconnect(id) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        Types.int32.encode(w, id);
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SocketBridge_invoke", handle, 2, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+    }
+    next(id) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        const callId = nextCallId();
+        Types.int32.encode(w, callId);
+        Types.int32.encode(w, id);
+        const promise = new Promise((resolve, reject) => {
+            pendingCalls.set(callId, {
+                resolve: resolve,
+                decode: (blob) => {
+                    const failure = errorMessageOf(blob);
+                    if (failure !== null) {
+                        reject(new SwiftError(failure));
+                        return undefined;
+                    }
+                    return decodeWith(Types.string, blob);
+                },
+            });
+        });
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SocketBridge_invoke", handle, 3, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return promise;
+    }
+    delay(milliseconds) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        const callId = nextCallId();
+        Types.int32.encode(w, callId);
+        Types.int32.encode(w, milliseconds);
+        const promise = new Promise((resolve, reject) => {
+            pendingCalls.set(callId, {
+                resolve: resolve,
+                decode: (blob) => {
+                    const failure = errorMessageOf(blob);
+                    if (failure !== null) {
+                        reject(new SwiftError(failure));
+                        return undefined;
+                    }
+                    return undefined;
+                },
+            });
+        });
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SocketBridge_invoke", handle, 4, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return promise;
+    }
+}
+/** Wraps a consumer-implemented `SocketBridge` as the ordinal
+ * dispatcher Swift's foreign proxy calls (method ordinal leads the
+ * arguments). */
+export function makeDispatcher_SocketBridge(impl, runtime) {
+    return (args) => {
+        const r = new BlobReader(args);
+        switch (Types.int32.decode(r)) {
+            case 0: {
+                const a0 = Types.string.decode(r);
+                return encodeWith(Types.int32, impl.open(a0));
+            }
+            case 1: {
+                const a0 = Types.int32.decode(r);
+                const a1 = Types.string.decode(r);
+                impl.send(a0, a1);
+                return new Uint8Array(0);
+            }
+            case 2: {
+                const a0 = Types.int32.decode(r);
+                impl.disconnect(a0);
+                return new Uint8Array(0);
+            }
+            case 3: {
+                const callId = Types.int32.decode(r);
+                const a0 = Types.int32.decode(r);
+                if (!runtime)
+                    throw new SwiftError("SocketBridge.next is async and needs a runtime-bound dispatcher");
+                const rt = runtime;
+                Promise.resolve().then(() => impl.next(a0)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
+                return new Uint8Array(0);
+            }
+            case 4: {
+                const callId = Types.int32.decode(r);
+                const a0 = Types.int32.decode(r);
+                if (!runtime)
+                    throw new SwiftError("SocketBridge.delay is async and needs a runtime-bound dispatcher");
+                const rt = runtime;
+                Promise.resolve().then(() => impl.delay(a0)).then((value) => resumeAsync(rt(), callId, new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0])), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
+                return new Uint8Array(0);
+            }
+        }
+        throw new SwiftError("unknown SocketBridge method ordinal");
+    };
+}
+export class SwiftHttpBridge {
+    handle;
+    runtime;
+    /** @internal Takes ownership of a +1 handle. */
+    constructor(runtime, handle) {
+        this.runtime = runtime;
+        this.handle = handle;
+        registry.register(this, () => runtime.call("swift_ffi_visor_HttpBridge_release", handle), this);
+    }
+    /** @internal */
+    borrowHandle() {
+        if (this.handle === 0)
+            throw new Error("HttpBridge used after close()");
+        return this.handle;
+    }
+    /** Releases the underlying Swift instance. Idempotent. */
+    close() {
+        if (this.handle !== 0) {
+            registry.unregister(this);
+            this.runtime.call("swift_ffi_visor_HttpBridge_release", this.handle);
+            this.handle = 0;
+        }
+    }
+    [Symbol.dispose]() {
+        this.close();
+    }
+    request(method, url, body, authorization) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        const callId = nextCallId();
+        Types.int32.encode(w, callId);
+        Types.string.encode(w, method);
+        Types.string.encode(w, url);
+        Types.string.encode(w, body);
+        Types.string.encode(w, authorization);
+        const promise = new Promise((resolve, reject) => {
+            pendingCalls.set(callId, {
+                resolve: resolve,
+                decode: (blob) => {
+                    const failure = errorMessageOf(blob);
+                    if (failure !== null) {
+                        reject(new SwiftError(failure));
+                        return undefined;
+                    }
+                    return decodeWith(Types.string, blob);
+                },
+            });
+        });
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_HttpBridge_invoke", handle, 0, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return promise;
+    }
+}
+/** Wraps a consumer-implemented `HttpBridge` as the ordinal
+ * dispatcher Swift's foreign proxy calls (method ordinal leads the
+ * arguments). */
+export function makeDispatcher_HttpBridge(impl, runtime) {
+    return (args) => {
+        const r = new BlobReader(args);
+        switch (Types.int32.decode(r)) {
+            case 0: {
+                const callId = Types.int32.decode(r);
+                const a0 = Types.string.decode(r);
+                const a1 = Types.string.decode(r);
+                const a2 = Types.string.decode(r);
+                const a3 = Types.string.decode(r);
+                if (!runtime)
+                    throw new SwiftError("HttpBridge.request is async and needs a runtime-bound dispatcher");
+                const rt = runtime;
+                Promise.resolve().then(() => impl.request(a0, a1, a2, a3)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
+                return new Uint8Array(0);
+            }
+        }
+        throw new SwiftError("unknown HttpBridge method ordinal");
+    };
+}
+export class SwiftSettingsBridge {
+    handle;
+    runtime;
+    /** @internal Takes ownership of a +1 handle. */
+    constructor(runtime, handle) {
+        this.runtime = runtime;
+        this.handle = handle;
+        registry.register(this, () => runtime.call("swift_ffi_visor_SettingsBridge_release", handle), this);
+    }
+    /** @internal */
+    borrowHandle() {
+        if (this.handle === 0)
+            throw new Error("SettingsBridge used after close()");
+        return this.handle;
+    }
+    /** Releases the underlying Swift instance. Idempotent. */
+    close() {
+        if (this.handle !== 0) {
+            registry.unregister(this);
+            this.runtime.call("swift_ffi_visor_SettingsBridge_release", this.handle);
+            this.handle = 0;
+        }
+    }
+    [Symbol.dispose]() {
+        this.close();
+    }
+    get(key) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        Types.string.encode(w, key);
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SettingsBridge_invoke", handle, 0, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+        return decodeWith(Types.string, result);
+    }
+    set(key, value) {
+        const handle = this.borrowHandle();
+        const w = new BlobWriter();
+        Types.string.encode(w, key);
+        Types.string.encode(w, value);
+        const staged = stageBytes(this.runtime, w.data());
+        const box = this.runtime.call("swift_ffi_visor_SettingsBridge_invoke", handle, 1, staged.ptr, staged.len);
+        staged.drop();
+        const result = takeBytes(this.runtime, box);
+        const failure = errorMessageOf(result);
+        if (failure !== null)
+            throw new SwiftError(failure);
+    }
+}
+/** Wraps a consumer-implemented `SettingsBridge` as the ordinal
+ * dispatcher Swift's foreign proxy calls (method ordinal leads the
+ * arguments). */
+export function makeDispatcher_SettingsBridge(impl, runtime) {
+    return (args) => {
+        const r = new BlobReader(args);
+        switch (Types.int32.decode(r)) {
+            case 0: {
+                const a0 = Types.string.decode(r);
+                return encodeWith(Types.string, impl.get(a0));
+            }
+            case 1: {
+                const a0 = Types.string.decode(r);
+                const a1 = Types.string.decode(r);
+                impl.set(a0, a1);
+                return new Uint8Array(0);
+            }
+        }
+        throw new SwiftError("unknown SettingsBridge method ordinal");
+    };
+}
 export class SwiftGPUWebHost {
     handle;
     runtime;
@@ -636,328 +956,44 @@ export function makeDispatcher_WebHost(impl, runtime) {
         throw new SwiftError("unknown WebHost method ordinal");
     };
 }
-export class SwiftVisorSocketService {
-    handle;
-    runtime;
-    /** @internal Takes ownership of a +1 handle. */
-    constructor(runtime, handle) {
-        this.runtime = runtime;
-        this.handle = handle;
-        registry.register(this, () => runtime.call("swift_ffi_visor_VisorSocketService_release", handle), this);
-    }
-    /** @internal */
-    borrowHandle() {
-        if (this.handle === 0)
-            throw new Error("VisorSocketService used after close()");
-        return this.handle;
-    }
-    /** Releases the underlying Swift instance. Idempotent. */
-    close() {
-        if (this.handle !== 0) {
-            registry.unregister(this);
-            this.runtime.call("swift_ffi_visor_VisorSocketService_release", this.handle);
-            this.handle = 0;
-        }
-    }
-    [Symbol.dispose]() {
-        this.close();
-    }
-    open(url) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        Types.string.encode(w, url);
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 0, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-        return decodeWith(Types.int32, result);
-    }
-    send(id, text) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        Types.int32.encode(w, id);
-        Types.string.encode(w, text);
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 1, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-    }
-    disconnect(id) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        Types.int32.encode(w, id);
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 2, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-    }
-    next(id) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        const callId = nextCallId();
-        Types.int32.encode(w, callId);
-        Types.int32.encode(w, id);
-        const promise = new Promise((resolve, reject) => {
-            pendingCalls.set(callId, {
-                resolve: resolve,
-                decode: (blob) => {
-                    const failure = errorMessageOf(blob);
-                    if (failure !== null) {
-                        reject(new SwiftError(failure));
-                        return undefined;
-                    }
-                    return decodeWith(Types.string, blob);
-                },
-            });
-        });
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 3, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-        return promise;
-    }
-    delay(milliseconds) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        const callId = nextCallId();
-        Types.int32.encode(w, callId);
-        Types.int32.encode(w, milliseconds);
-        const promise = new Promise((resolve, reject) => {
-            pendingCalls.set(callId, {
-                resolve: resolve,
-                decode: (blob) => {
-                    const failure = errorMessageOf(blob);
-                    if (failure !== null) {
-                        reject(new SwiftError(failure));
-                        return undefined;
-                    }
-                    return undefined;
-                },
-            });
-        });
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSocketService_invoke", handle, 4, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-        return promise;
-    }
-}
-/** Wraps a consumer-implemented `VisorSocketService` as the ordinal
- * dispatcher Swift's foreign proxy calls (method ordinal leads the
- * arguments). */
-export function makeDispatcher_VisorSocketService(impl, runtime) {
-    return (args) => {
-        const r = new BlobReader(args);
-        switch (Types.int32.decode(r)) {
-            case 0: {
-                const a0 = Types.string.decode(r);
-                return encodeWith(Types.int32, impl.open(a0));
-            }
-            case 1: {
-                const a0 = Types.int32.decode(r);
-                const a1 = Types.string.decode(r);
-                impl.send(a0, a1);
-                return new Uint8Array(0);
-            }
-            case 2: {
-                const a0 = Types.int32.decode(r);
-                impl.disconnect(a0);
-                return new Uint8Array(0);
-            }
-            case 3: {
-                const callId = Types.int32.decode(r);
-                const a0 = Types.int32.decode(r);
-                if (!runtime)
-                    throw new SwiftError("VisorSocketService.next is async and needs a runtime-bound dispatcher");
-                const rt = runtime;
-                Promise.resolve().then(() => impl.next(a0)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
-                return new Uint8Array(0);
-            }
-            case 4: {
-                const callId = Types.int32.decode(r);
-                const a0 = Types.int32.decode(r);
-                if (!runtime)
-                    throw new SwiftError("VisorSocketService.delay is async and needs a runtime-bound dispatcher");
-                const rt = runtime;
-                Promise.resolve().then(() => impl.delay(a0)).then((value) => resumeAsync(rt(), callId, new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0])), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
-                return new Uint8Array(0);
-            }
-        }
-        throw new SwiftError("unknown VisorSocketService method ordinal");
-    };
-}
-export class SwiftVisorHTTPService {
-    handle;
-    runtime;
-    /** @internal Takes ownership of a +1 handle. */
-    constructor(runtime, handle) {
-        this.runtime = runtime;
-        this.handle = handle;
-        registry.register(this, () => runtime.call("swift_ffi_visor_VisorHTTPService_release", handle), this);
-    }
-    /** @internal */
-    borrowHandle() {
-        if (this.handle === 0)
-            throw new Error("VisorHTTPService used after close()");
-        return this.handle;
-    }
-    /** Releases the underlying Swift instance. Idempotent. */
-    close() {
-        if (this.handle !== 0) {
-            registry.unregister(this);
-            this.runtime.call("swift_ffi_visor_VisorHTTPService_release", this.handle);
-            this.handle = 0;
-        }
-    }
-    [Symbol.dispose]() {
-        this.close();
-    }
-    request(method, url, body, authorization) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        const callId = nextCallId();
-        Types.int32.encode(w, callId);
-        Types.string.encode(w, method);
-        Types.string.encode(w, url);
-        Types.string.encode(w, body);
-        Types.string.encode(w, authorization);
-        const promise = new Promise((resolve, reject) => {
-            pendingCalls.set(callId, {
-                resolve: resolve,
-                decode: (blob) => {
-                    const failure = errorMessageOf(blob);
-                    if (failure !== null) {
-                        reject(new SwiftError(failure));
-                        return undefined;
-                    }
-                    return decodeWith(Types.string, blob);
-                },
-            });
-        });
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorHTTPService_invoke", handle, 0, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-        return promise;
-    }
-}
-/** Wraps a consumer-implemented `VisorHTTPService` as the ordinal
- * dispatcher Swift's foreign proxy calls (method ordinal leads the
- * arguments). */
-export function makeDispatcher_VisorHTTPService(impl, runtime) {
-    return (args) => {
-        const r = new BlobReader(args);
-        switch (Types.int32.decode(r)) {
-            case 0: {
-                const callId = Types.int32.decode(r);
-                const a0 = Types.string.decode(r);
-                const a1 = Types.string.decode(r);
-                const a2 = Types.string.decode(r);
-                const a3 = Types.string.decode(r);
-                if (!runtime)
-                    throw new SwiftError("VisorHTTPService.request is async and needs a runtime-bound dispatcher");
-                const rt = runtime;
-                Promise.resolve().then(() => impl.request(a0, a1, a2, a3)).then((value) => resumeAsync(rt(), callId, encodeWith(Types.string, value)), (error) => resumeAsync(rt(), callId, encodeError(error instanceof Error ? error.message : String(error))));
-                return new Uint8Array(0);
-            }
-        }
-        throw new SwiftError("unknown VisorHTTPService method ordinal");
-    };
-}
-export class SwiftVisorSettingsService {
-    handle;
-    runtime;
-    /** @internal Takes ownership of a +1 handle. */
-    constructor(runtime, handle) {
-        this.runtime = runtime;
-        this.handle = handle;
-        registry.register(this, () => runtime.call("swift_ffi_visor_VisorSettingsService_release", handle), this);
-    }
-    /** @internal */
-    borrowHandle() {
-        if (this.handle === 0)
-            throw new Error("VisorSettingsService used after close()");
-        return this.handle;
-    }
-    /** Releases the underlying Swift instance. Idempotent. */
-    close() {
-        if (this.handle !== 0) {
-            registry.unregister(this);
-            this.runtime.call("swift_ffi_visor_VisorSettingsService_release", this.handle);
-            this.handle = 0;
-        }
-    }
-    [Symbol.dispose]() {
-        this.close();
-    }
-    get(key) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        Types.string.encode(w, key);
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSettingsService_invoke", handle, 0, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-        return decodeWith(Types.string, result);
-    }
-    set(key, value) {
-        const handle = this.borrowHandle();
-        const w = new BlobWriter();
-        Types.string.encode(w, key);
-        Types.string.encode(w, value);
-        const staged = stageBytes(this.runtime, w.data());
-        const box = this.runtime.call("swift_ffi_visor_VisorSettingsService_invoke", handle, 1, staged.ptr, staged.len);
-        staged.drop();
-        const result = takeBytes(this.runtime, box);
-        const failure = errorMessageOf(result);
-        if (failure !== null)
-            throw new SwiftError(failure);
-    }
-}
-/** Wraps a consumer-implemented `VisorSettingsService` as the ordinal
- * dispatcher Swift's foreign proxy calls (method ordinal leads the
- * arguments). */
-export function makeDispatcher_VisorSettingsService(impl, runtime) {
-    return (args) => {
-        const r = new BlobReader(args);
-        switch (Types.int32.decode(r)) {
-            case 0: {
-                const a0 = Types.string.decode(r);
-                return encodeWith(Types.string, impl.get(a0));
-            }
-            case 1: {
-                const a0 = Types.string.decode(r);
-                const a1 = Types.string.decode(r);
-                impl.set(a0, a1);
-                return new Uint8Array(0);
-            }
-        }
-        throw new SwiftError("unknown VisorSettingsService method ordinal");
-    };
-}
 /** Builders wrapping host implementations for injection. */
 export const Dependencies = {
+    socketBridge: (provide, lazy = true) => {
+        let impl;
+        return {
+            key: "swift_ffi_visor_SocketBridge",
+            lazy,
+            dispatcher: (args, runtime) => {
+                if (!impl)
+                    impl = provide();
+                return makeDispatcher_SocketBridge(impl, runtime)(args);
+            },
+        };
+    },
+    httpBridge: (provide, lazy = true) => {
+        let impl;
+        return {
+            key: "swift_ffi_visor_HttpBridge",
+            lazy,
+            dispatcher: (args, runtime) => {
+                if (!impl)
+                    impl = provide();
+                return makeDispatcher_HttpBridge(impl, runtime)(args);
+            },
+        };
+    },
+    settingsBridge: (provide, lazy = true) => {
+        let impl;
+        return {
+            key: "swift_ffi_visor_SettingsBridge",
+            lazy,
+            dispatcher: (args, runtime) => {
+                if (!impl)
+                    impl = provide();
+                return makeDispatcher_SettingsBridge(impl, runtime)(args);
+            },
+        };
+    },
     gPUWebHost: (provide, lazy = true) => {
         let impl;
         return {
@@ -979,42 +1015,6 @@ export const Dependencies = {
                 if (!impl)
                     impl = provide();
                 return makeDispatcher_WebHost(impl, runtime)(args);
-            },
-        };
-    },
-    visorSocketService: (provide, lazy = true) => {
-        let impl;
-        return {
-            key: "swift_ffi_visor_VisorSocketService",
-            lazy,
-            dispatcher: (args, runtime) => {
-                if (!impl)
-                    impl = provide();
-                return makeDispatcher_VisorSocketService(impl, runtime)(args);
-            },
-        };
-    },
-    visorHTTPService: (provide, lazy = true) => {
-        let impl;
-        return {
-            key: "swift_ffi_visor_VisorHTTPService",
-            lazy,
-            dispatcher: (args, runtime) => {
-                if (!impl)
-                    impl = provide();
-                return makeDispatcher_VisorHTTPService(impl, runtime)(args);
-            },
-        };
-    },
-    visorSettingsService: (provide, lazy = true) => {
-        let impl;
-        return {
-            key: "swift_ffi_visor_VisorSettingsService",
-            lazy,
-            dispatcher: (args, runtime) => {
-                if (!impl)
-                    impl = provide();
-                return makeDispatcher_VisorSettingsService(impl, runtime)(args);
             },
         };
     },
@@ -1094,12 +1094,6 @@ export class SwiftUI {
         b0.drop();
         b1.drop();
     }
-    installVisorServices(socket, http, settings) {
-        const f0 = socket instanceof SwiftVisorSocketService ? [socket.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorSocketService(socket, () => this.runtime))];
-        const f1 = http instanceof SwiftVisorHTTPService ? [http.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorHTTPService(http, () => this.runtime))];
-        const f2 = settings instanceof SwiftVisorSettingsService ? [settings.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_VisorSettingsService(settings, () => this.runtime))];
-        this.runtime.call("swift_ffi_visor_installVisorServices", f0[0], f0[1], f1[0], f1[1], f2[0], f2[1]);
-    }
 }
 /** Instantiates the reactor and returns the bridged API. `wasi`
  * merges over the built-in WASI shim, so a host can extend or
@@ -1173,10 +1167,10 @@ export async function load(wasm, options) {
     instance.exports._initialize();
     runtime = new Runtime(instance.exports);
     // Register the interfaces' dependency-proxy factories (docs/wasm_di.md).
+    runtime.call("swift_ffi_visor_register_SocketBridge");
+    runtime.call("swift_ffi_visor_register_HttpBridge");
+    runtime.call("swift_ffi_visor_register_SettingsBridge");
     runtime.call("swift_ffi_register_GPUWebHost");
     runtime.call("swift_ffi_register_WebHost");
-    runtime.call("swift_ffi_visor_register_VisorSocketService");
-    runtime.call("swift_ffi_visor_register_VisorHTTPService");
-    runtime.call("swift_ffi_visor_register_VisorSettingsService");
     return new SwiftUI(runtime);
 }
