@@ -12,9 +12,9 @@
 //
 // The shared runtime (swift_ffi/runtime/ts) is staged next to this file
 // by the wasm library macro; bridges in one directory share the one copy.
-import { BlobReader, BlobWriter, Runtime, SwiftError, Tags, Types, decodeWith, decoder, encodeError, encodeErrorBlob, encodeWith, errorMessageOf, foreignObjects, nextCallId, pendingCalls, registerForeign, registry, resumeAsync, stageBytes, stageString, takeBytes, wasiShim, } from "./swift_ffi_runtime.js?v=3080610332";
+import { BlobReader, BlobWriter, Runtime, SwiftError, Tags, Types, decodeWith, decoder, encodeError, encodeErrorBlob, encodeWith, errorMessageOf, foreignObjects, nextCallId, pendingCalls, registerForeign, registry, resumeAsync, stageBytes, stageString, takeBytes, wasiShim, } from "./swift_ffi_runtime.js?v=2185692469";
 // Re-exported so consumers keep importing them from this module.
-export { Types } from "./swift_ffi_runtime.js?v=3080610332";
+export { Types } from "./swift_ffi_runtime.js?v=2185692469";
 /** The runtime type token for `TextMetrics` (generic calls). */
 export const TextMetricsType = {
     encode(w, v) {
@@ -1024,6 +1024,12 @@ export class SwiftUI {
     /** @internal */
     constructor(runtime) {
         this.runtime = runtime;
+    }
+    installVisorBridges(socket, http, settings) {
+        const f0 = socket instanceof SwiftSocketBridge ? [socket.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_SocketBridge(socket, () => this.runtime))];
+        const f1 = http instanceof SwiftHttpBridge ? [http.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_HttpBridge(http, () => this.runtime))];
+        const f2 = settings instanceof SwiftSettingsBridge ? [settings.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_SettingsBridge(settings, () => this.runtime))];
+        this.runtime.call("swift_ffi_visor_installVisorBridges", f0[0], f0[1], f1[0], f1[1], f2[0], f2[1]);
     }
     gpuConnect(host) {
         const f0 = host instanceof SwiftGPUWebHost ? [host.borrowHandle(), 0] : [0, registerForeign(makeDispatcher_GPUWebHost(host, () => this.runtime))];
