@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=596585450";
+import { SYMBOLS } from "./symbols.js?v=757354978";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -172,6 +172,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     if (p.a11yValue !== undefined) props["aria-valuetext"] = p.a11yValue;
     if (p.a11yId !== undefined) props["data-testid"] = p.a11yId;
     if (p.a11yHidden === "1") props["aria-hidden"] = "true";
+    // `.accessibilityElement(children:)`: one element read as a whole
+    // (`.combine`: a group; `.ignore`: a leaf with its own label).
+    if (p.a11yChildren === "combine" || p.a11yChildren === "contain") props.role = props.role || "group";
+    if (p.a11yChildren === "ignore" && p.a11yLabel !== undefined) props.role = props.role || "img";
     // `.id(_:)`: what a ScrollViewProxy's scrollTo finds.
     if (p.vid !== undefined) props["data-vid"] = p.vid;
     return props;
