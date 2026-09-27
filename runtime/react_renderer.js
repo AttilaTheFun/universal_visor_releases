@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=4224785099";
+import { SYMBOLS } from "./symbols.js?v=83981360";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -2494,6 +2494,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }
         if ((n.params || {}).cell === "row") {
           const selected = (n.params || {}).selected === "1";
+          // `.listRowSeparator(.hidden)` on this row, or the list's.
+          const separators = currentListSeparators && (n.params || {}).noSeparator !== "1";
           // Rows off screen skip layout and paint (sized as last laid out),
           // the way a collection view only lays out what is visible.
           s.contentVisibility = "auto";
@@ -2511,15 +2513,15 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
             s.boxSizing = "border-box";
             s.justifyContent = "center";
             if (currentListStyle === "insetGrouped") {
-              props.className = ((props.className || "") + " uui-ig-row" + (currentListSeparators ? "" : " uui-no-sep")).trim();
+              props.className = ((props.className || "") + " uui-ig-row" + (separators ? "" : " uui-no-sep")).trim();
               if (selected) s.background = "rgba(10,132,255,0.18)";
             } else if (currentListStyle === "plain") {
               // Messages' inbox: the row on the page, a hairline from the
               // text column, a gray highlight for the selected row.
-              props.className = ((props.className || "") + " uui-plain-row" + (currentListSeparators ? "" : " uui-no-sep")).trim();
+              props.className = ((props.className || "") + " uui-plain-row" + (separators ? "" : " uui-no-sep")).trim();
               if (selected) s.background = "rgba(120,120,128,0.22)";
             } else {
-              if (currentListSeparators) s.borderBottom = "1px solid rgba(120,120,128,0.2)";
+              if (separators) s.borderBottom = "1px solid rgba(120,120,128,0.2)";
               if (selected) s.background = "rgba(10,132,255,0.18)";
             }
           }
