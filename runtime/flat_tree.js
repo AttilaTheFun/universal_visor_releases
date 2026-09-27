@@ -114,6 +114,7 @@ function makeReader(bytes) {
     if ((pos = field(table, 46))) n.offsetY = f64(pos);
     if ((pos = field(table, 47))) n.scale = f64(pos);
     if ((pos = field(table, 48))) n.drag = string(pos);
+    if ((pos = field(table, 49))) n.key = string(pos);
     if ((pos = field(table, 35))) n.opacity = f64(pos);
     if ((pos = field(table, 36))) n.bg = color(pos);
     if ((pos = field(table, 37))) n.gradient = string(pos);
@@ -134,7 +135,7 @@ function makeReader(bytes) {
     return n;
   }
 
-  return { node, field, string, u8, u32, indirect };
+  return { node, field, string, u8, u32, i32, indirect };
 }
 
 export function decodeTree(bytes) {
@@ -158,9 +159,24 @@ export function applyPatch(retained, bytes) {
     for (let index = 0; index < count; index += 1) {
       const op = r.indirect(vec + 4 + index * 4);
       const pathPos = r.field(op, 0); // PatchOp.path (slot 0)
-      const nodePos = r.field(op, 1); // PatchOp.node (slot 1)
-      if (!pathPos || !nodePos) continue;
+      if (!pathPos) continue;
       const path = r.string(pathPos);
+      const orderPos = r.field(op, 3); // PatchOp.order (slot 3)
+      if (orderPos) {
+        const orderVec = r.indirect(orderPos);
+        const order = [];
+        for (let i = 0; i < r.u32(orderVec); i += 1) order.push(r.i32(orderVec + 4 + i * 4));
+        const insertsPos = r.field(op, 4); // PatchOp.inserts (slot 4)
+        const inserts = [];
+        if (insertsPos) {
+          const vec = r.indirect(insertsPos);
+          for (let i = 0; i < r.u32(vec); i += 1) inserts.push(r.node(r.indirect(vec + 4 + i * 4)));
+        }
+        root = reorderAt(root, path, order, inserts);
+        continue;
+      }
+      const nodePos = r.field(op, 1); // PatchOp.node (slot 1)
+      if (!nodePos) continue;
       const attrsPos = r.field(op, 2); // PatchOp.attrs_only (slot 2)
       const attrsOnly = attrsPos !== 0 && r.u8(attrsPos) !== 0;
       const decoded = r.node(r.indirect(nodePos));
@@ -170,6 +186,27 @@ export function applyPatch(retained, bytes) {
   // Non-null after the first (root) op; the empty box guards a degenerate
   // empty-ops patch against a still-empty retained tree.
   return root ?? { k: "box" };
+}
+
+// Reorders the children of the node at `path`: for each `order` entry the
+// retained child at that index (keeping its object identity, so React skips
+// it), or for -1 the next of `inserts`. Copy-on-write along the path.
+function reorderAt(root, path, order, inserts) {
+  const segments = path.split(".").slice(1).map(Number);
+  const rebuild = (cur, depth) => {
+    if (depth === segments.length) {
+      const old = cur.ch || [];
+      let next = 0;
+      const ch = order.map((index) => (index >= 0 && index < old.length ? old[index] : inserts[next++]));
+      const out = { ...cur };
+      if (ch.length) out.ch = ch; else delete out.ch;
+      return out;
+    }
+    const ch = cur.ch.slice();
+    ch[segments[depth]] = rebuild(cur.ch[segments[depth]], depth + 1);
+    return { ...cur, ch };
+  };
+  return root ? rebuild(root, 0) : root;
 }
 
 // Splices `decoded` into `root` at positional `path` ("n", "n.0.1", ...).
