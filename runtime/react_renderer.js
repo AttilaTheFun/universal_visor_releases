@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3637233511";
+import { SYMBOLS } from "./symbols.js?v=1083754450";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -172,6 +172,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     if (p.a11yValue !== undefined) props["aria-valuetext"] = p.a11yValue;
     if (p.a11yId !== undefined) props["data-testid"] = p.a11yId;
     if (p.a11yHidden === "1") props["aria-hidden"] = "true";
+    // `.id(_:)`: what a ScrollViewProxy's scrollTo finds.
+    if (p.vid !== undefined) props["data-vid"] = p.vid;
     return props;
   }
 
@@ -1412,8 +1414,45 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }, insetContent("content", kids[contentIndex], hasEdgeScroll), bar);
   }
 
-  function BottomAnchoredScroll({ divProps, children }) {
+  // `ScrollViewProxy.scrollTo(id, anchor:)`: the core sends the latest
+  // request ("id|tick|anchor") to every scroll; the one holding a view with
+  // that id brings it to the anchor, once per request, after the render
+  // that carries it has laid out.
+  function applyScrollRequest(el, request, applied) {
+    if (!el || !request) return;
+    const [target, tick, anchor] = request.split("|");
+    if (applied.current === tick) return;
+    const escaped = window.CSS && CSS.escape ? CSS.escape(target) : target.replace(/"/g, '\\"');
+    const node = el.querySelector(`[data-vid="${escaped}"]`);
+    if (!node) return;
+    applied.current = tick;
+    // Measured against what is visible: inside the scroll padding the
+    // chrome over the scroll reserves (a bar, the composer), as iOS measures
+    // inside the content insets.
+    const cs = getComputedStyle(el);
+    const outer = el.getBoundingClientRect();
+    const box = { top: outer.top + (parseFloat(cs.scrollPaddingTop) || 0), bottom: outer.bottom - (parseFloat(cs.scrollPaddingBottom) || 0) };
+    box.height = box.bottom - box.top;
+    const r = node.getBoundingClientRect();
+    let delta;
+    if (anchor === "bottom") delta = r.bottom - box.bottom;
+    else if (anchor === "top") delta = r.top - box.top;
+    else if (anchor === "center") delta = (r.top + r.height / 2) - (box.top + box.height / 2);
+    else delta = r.top < box.top ? r.top - box.top : (r.bottom > box.bottom ? r.bottom - box.bottom : 0);
+    el.scrollTop += delta;
+  }
+
+  function RequestedScroll({ divProps, children, request }) {
     const ref = R.useRef(null);
+    const applied = R.useRef(null);
+    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied));
+    return h("div", { ...divProps, ref }, children);
+  }
+
+  function BottomAnchoredScroll({ divProps, children, request }) {
+    const ref = R.useRef(null);
+    const applied = R.useRef(null);
+    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied));
     const pinned = R.useRef(true);
     const pin = () => {
       const el = ref.current;
@@ -2173,9 +2212,11 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }
         // `.defaultScrollAnchor(.bottom)` (a chat log): start at the bottom
         // and stay pinned there as content grows, until the user scrolls up.
+        const request = (n.params || {}).scrollTo;
         if ((n.params || {}).anchor === "bottom") {
-          return h(BottomAnchoredScroll, { key, divProps: props }, kids);
+          return h(BottomAnchoredScroll, { key, divProps: props, request }, kids);
         }
+        if (request) return h(RequestedScroll, { key, divProps: props, request }, kids);
         return h("div", props, kids);
       case "image": {
         const src = /^(https?:|data:|blob:)/.test(n.src) ? n.src : assetBase + n.src + (n.src.includes(".") ? "" : ".png");

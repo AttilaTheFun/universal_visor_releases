@@ -13,13 +13,13 @@
 //     _initialize, uui_hot_start(w, h), uui_hot_render(), uui_hot_resize(w, h),
 //     uui_hot_set_color_scheme(dark), uui_hot_alloc/free, uui_hot_event(...)
 //
-// The five fixed `swift_ffi` transport imports are bound as inert stubs
+// The six fixed `swift_ffi` transport imports are bound as inert stubs
 // (dependency lookups answer "absent"); a v3 reactor that never touches
 // `dependencies[...]` runs exactly as it does under a host without DI.
 
-import { BlobWriter, Runtime, Tags, Types, decoder as ffiDecoder, encodeErrorBlob, foreignObjects, pendingCalls, registerForeign, wasiShim } from "./swift_ffi_runtime.js?v=3637233511";
-import { createReactTreeRenderer } from "./runtime/react_renderer.js?v=3637233511";
-import { applyPatch } from "./runtime/flat_tree.js?v=3637233511";
+import { BlobWriter, Runtime, Tags, Types, decoder as ffiDecoder, encodeErrorBlob, foreignObjects, pendingCalls, registerForeign, wasiShim } from "./swift_ffi_runtime.js?v=1083754450";
+import { createReactTreeRenderer } from "./runtime/react_renderer.js?v=1083754450";
+import { applyPatch } from "./runtime/flat_tree.js?v=1083754450";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -130,6 +130,12 @@ export async function runHotBundle({ wasm, container, dependencies = {}, onLog =
         queueMicrotask(() => {
           if (exports && exports.swift_ffi_task_run) exports.swift_ffi_task_run(job);
         });
+      },
+      // A timed job (Task.sleep): run it once the delay is up.
+      task_enqueue_after(job, delayMs) {
+        setTimeout(() => {
+          if (exports && exports.swift_ffi_task_run) exports.swift_ffi_task_run(job);
+        }, Math.max(0, delayMs));
       },
       async_complete(callId, blobPtr, blobLen) {
         const pending = pendingCalls.get(callId);
