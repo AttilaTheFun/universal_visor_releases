@@ -12,25 +12,27 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=663322689";
-import { storeFiles } from "./imported_files.js?v=663322689";
+import { SYMBOLS } from "./symbols.js?v=3587858149";
+import { storeFiles } from "./imported_files.js?v=3587858149";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
 /// `params.symbol`); unknown names keep the guest's fallback glyph.
-function symbolSVG(h, name, size, color, weight, extraStyle) {
+function symbolSVG(h, name, size, color, weight, extraStyle, secondary) {
   const entry = SYMBOLS[name];
   if (!entry) return null;
   const px = Math.round((Number(size) || 17) * 1.15);
   const bold = Number(weight) >= 600;
   return h("svg", {
     viewBox: "0 0 24 24", width: px, height: px, "aria-hidden": "true",
-    fill: entry.fill ? "currentColor" : "none", stroke: "currentColor",
+    // With a secondary style (`.foregroundStyle(_:_:)`) a filled badge takes
+    // it, and its glyph the primary colour.
+    fill: entry.fill ? (secondary && entry.inner ? secondary : "currentColor") : "none", stroke: secondary && entry.inner ? secondary : "currentColor",
     strokeWidth: entry.fill ? 1.5 : (bold ? 2.4 : 2), strokeLinecap: "round", strokeLinejoin: "round",
     style: { display: "inline-block", verticalAlign: "-0.2em", color, flexShrink: 0, ...extraStyle },
   }, h("path", { key: "d", d: entry.d }),
      // A filled badge's glyph, in the colour the fill contrasts with.
-     entry.inner ? h("path", { key: "i", d: entry.inner, fill: "none", stroke: "var(--uui-symbol-contrast, #fff)", strokeWidth: 2.2 }) : null);
+     entry.inner ? h("path", { key: "i", d: entry.inner, fill: "none", stroke: secondary ? "currentColor" : "var(--uui-symbol-contrast, #fff)", strokeWidth: 2.2 }) : null);
 }
 
 export function createReactTreeRenderer({ container, sendEvent, assetBase = "assets/", mapSurface = null }) {
@@ -2390,7 +2392,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           s.overflow = "hidden";
         }
         if ((n.params || {}).symbol) {
-          const svg = symbolSVG(h, n.params.symbol, n.size, s.color, n.weight);
+          const svg = symbolSVG(h, n.params.symbol, n.size, s.color, n.weight, undefined, n.params.symbol2);
           if (svg) {
             s.display = "inline-flex"; s.alignItems = "center"; s.justifyContent = "center"; s.lineHeight = 1;
             return h("span", props, svg);
@@ -2409,11 +2411,27 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         s.background = "rgba(120,120,128,0.3)";
         return h("div", props);
       case "scroll":
-        s.flex = "1 1 0";
-        s.alignSelf = "stretch";
-        s.minHeight = 0;
-        s.minWidth = 0;
-        s[n.axis === "h" ? "overflowX" : "overflowY"] = "auto";
+        if (n.axis === "h") {
+          // A horizontal scroll is as tall as its content (a strip of
+          // thumbnails in a column), and takes the width it is given.
+          s.flex = "0 0 auto";
+          s.alignSelf = "stretch";
+          s.minWidth = 0;
+          s.maxWidth = "100%";
+          s.overflowX = "auto";
+          s.overflowY = "hidden";
+          // Its content starts at the leading edge, as SwiftUI's does.
+          s.display = "flex";
+          s.flexDirection = "row";
+          s.justifyContent = "flex-start";
+          s.alignItems = "flex-start";
+        } else {
+          s.flex = "1 1 0";
+          s.alignSelf = "stretch";
+          s.minHeight = 0;
+          s.minWidth = 0;
+          s.overflowY = "auto";
+        }
         s.overscrollBehavior = "contain";
         props["data-uui-scroll"] = "1";
         if (edgeScrolls.has(n)) {
