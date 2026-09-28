@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3587858149";
-import { storeFiles } from "./imported_files.js?v=3587858149";
+import { SYMBOLS } from "./symbols.js?v=1515225728";
+import { storeFiles } from "./imported_files.js?v=1515225728";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -2458,12 +2458,18 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         // `.scrollDismissesKeyboard(.immediately / .interactively)`: a scroll
         // (or a touch drag) blurs the focused field, closing the soft keyboard.
         if ((n.params || {}).dismissKeyboard && (n.params || {}).dismissKeyboard !== "never") {
+          // Only the reader's own drag: the scroll's programmatic moves (it
+          // follows the keyboard coming up, staying at its bottom) must not
+          // close the keyboard they are making room for.
           const dismiss = () => {
             const active = document.activeElement;
             if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) active.blur();
           };
-          props.onScroll = dismiss;
-          props.onTouchMove = dismiss;
+          props.onTouchStart = (e) => { e.currentTarget.__uuiTouchY = e.touches[0] ? e.touches[0].clientY : null; };
+          props.onTouchMove = (e) => {
+            const start = e.currentTarget.__uuiTouchY;
+            if (start != null && e.touches[0] && Math.abs(e.touches[0].clientY - start) > 12) dismiss();
+          };
         }
         // `.defaultScrollAnchor(.bottom)` (a chat log): start at the bottom
         // and stay pinned there as content grows, until the user scrolls up.
