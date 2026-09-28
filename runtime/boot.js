@@ -4,10 +4,10 @@
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { load } from "../app_bridge.js?v=2126548944";
-import { createRasterHost } from "./raster.js?v=2126548944";
-import { createReactTreeRenderer } from "./react_renderer.js?v=2126548944";
-import { applyPatch } from "./flat_tree.js?v=2126548944";
+import { load } from "../app_bridge.js?v=922616382";
+import { createRasterHost } from "./raster.js?v=922616382";
+import { createReactTreeRenderer } from "./react_renderer.js?v=922616382";
+import { applyPatch } from "./flat_tree.js?v=922616382";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -35,7 +35,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=2126548944");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=922616382");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -67,16 +67,43 @@ export async function boot({
       // inset is dropped while the keyboard covers it — nothing but the
       // page's background sits between the composer and the keys.
       treeContainer.style.transition = "height 0.25s ease-out, top 0.25s ease-out";
+      // The surface keeps running on under the keyboard: its content lays
+      // out above the keys (the keyboard's height is bottom padding), and a
+      // bottom `.safeAreaInset` reaches down into that padding, so what
+      // scrolls under the composer carries on behind the keyboard, as on
+      // an iPhone, instead of the page's plain ground.
+      treeContainer.style.boxSizing = "border-box";
+      // A Home Screen web app that draws under the status bar is told a
+      // viewport short by the status bar's height (iOS 26: innerHeight 812
+      // on an 874pt screen, leaving a blank strip at the bottom); the large
+      // viewport unit still measures the whole screen.
+      const screenProbe = document.createElement("div");
+      screenProbe.style.cssText = "position:absolute;top:0;left:0;width:0;height:100lvh;visibility:hidden;pointer-events:none";
+      document.body.appendChild(screenProbe);
+      const pageHeight = () => navigator.standalone === true
+        ? Math.max(window.innerHeight, Math.round(screenProbe.getBoundingClientRect().height))
+        : window.innerHeight;
       const fit = () => {
         const keyboardUp = viewport.height < window.innerHeight - 120;
+        const keyboard = keyboardUp ? Math.max(0, Math.round(pageHeight() - viewport.height - viewport.offsetTop)) : 0;
+        const full = keyboardUp ? Math.round(viewport.height) : Math.max(Math.round(viewport.height), pageHeight());
         treeContainer.style.top = `${Math.max(0, viewport.offsetTop)}px`;
-        treeContainer.style.height = `${Math.round(viewport.height)}px`;
+        treeContainer.style.height = `${full + keyboard}px`;
         treeContainer.style.bottom = "auto";
+        treeContainer.style.paddingBottom = `${keyboard}px`;
+        treeContainer.style.setProperty("--uui-keyboard", `${keyboard}px`);
         treeContainer.style.setProperty("--uui-safe-bottom", keyboardUp ? "0px" : "env(safe-area-inset-bottom, 0px)");
         if (window.scrollY) window.scrollTo(0, 0);
       };
       viewport.addEventListener("resize", fit);
       viewport.addEventListener("scroll", fit);
+      // The page runs the whole screen too, so nothing clips the surface
+      // at the short viewport's edge.
+      if (navigator.standalone === true) {
+        document.documentElement.style.height = "100lvh";
+        document.body.style.height = "100lvh";
+      }
+      fit();
     }
     // React-path `Map` host views: the wasm module draws real SwiftMap tiles
     // (when swift_map is linked, `--config=map`) into the page canvas through
@@ -123,7 +150,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=2126548944");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=922616382");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -466,7 +493,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=2126548944"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=922616382"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 

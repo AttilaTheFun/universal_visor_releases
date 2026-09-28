@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=2126548944";
+import { SYMBOLS } from "./symbols.js?v=922616382";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -107,6 +107,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
 
   const alignCSS = { leading: "flex-start", center: "center", trailing: "flex-end", top: "flex-start", bottom: "flex-end" };
 
+  // The frost of materials and bar buttons.
+  const MATERIAL_BLUR = "blur(14px)";
+
   function gradientCSS(n) {
     if (!n.gradient) return undefined;
     try {
@@ -149,6 +152,15 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     if (n.opacity != null) s.opacity = n.opacity;
     if (n.shadow) {
       s.boxShadow = `${n.shadow.x}px ${n.shadow.y}px ${n.shadow.radius * 2}px ${rgba(n.shadow.color)}`;
+    }
+    // A `Material` / `.glassEffect` fill: its tint over a blur of what lies
+    // behind, with a hairline — the bar buttons' material.
+    if (n.gradient && n.gradient.indexOf('"material"') >= 0) {
+      const dark = pageDark();
+      s.backdropFilter = MATERIAL_BLUR;
+      s.WebkitBackdropFilter = MATERIAL_BLUR;
+      const hairline = `inset 0 0 0 1px ${dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)"}`;
+      s.boxShadow = [hairline, s.boxShadow || (dark ? "0 1px 6px rgba(0,0,0,0.25)" : "0 1px 6px rgba(0,0,0,0.08)")].join(",");
     }
     if (n.tap) s.cursor = "pointer";
     // Visual transforms (.offset / .scaleEffect): per-frame values from the
@@ -664,7 +676,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // hairline, in the label colour (no liquid glass).
       border: `1px solid ${dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)"}`,
       background: dark ? "rgba(60,60,67,0.55)" : "rgba(255,255,255,0.72)",
-      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      backdropFilter: MATERIAL_BLUR, WebkitBackdropFilter: MATERIAL_BLUR,
       color: dark ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.88)", fontSize: 17,
       fontWeight: 500, cursor: "pointer", padding: "0 17px", borderRadius: 22, flex: "0 0 auto",
       minWidth: 44, height: 44, lineHeight: "42px", margin: "0 2px", boxSizing: "border-box",
@@ -713,8 +725,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           ? h("span", { key: "lt", style: { fontWeight: 600, fontSize: 15, padding: "0 6px", whiteSpace: "nowrap" } }, p.title)
           : null,
         p.back === "1"
-          ? h("button", { key: "back", className: "uui-bar-item", style: { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: desktop ? 6 : 10, paddingRight: desktop ? 9 : 14 }, onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
-              symbolSVG(h, "chevron.left", desktop ? 17 : 20, "currentColor", 600, { verticalAlign: "0" }), "Back")
+          // iOS 26's Back: the chevron alone in a round button (its title
+          // is for assistive tech); the desktop keeps the word.
+          ? h("button", { key: "back", className: "uui-bar-item", "aria-label": "Back",
+              style: desktop ? { ...button, display: "inline-flex", alignItems: "center", gap: 2, paddingLeft: 6, paddingRight: 9 } : circle,
+              onClick: () => (n.onBack ? n.onBack() : sendEvent(n.edit, "back")) },
+              symbolSVG(h, "chevron.left", desktop ? 17 : 21, "currentColor", 600, { verticalAlign: "0" }), desktop ? "Back" : null)
           : null,
         leading.map((title, i) => h("button", {
           key: `l${i}`, className: "uui-bar-item", style: itemStyle(leadingSymbols[i]), "aria-label": leadingLabels[i] || undefined,
@@ -831,7 +847,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         key: "bar",
         style: {
           position: "absolute", top: 0, left: 0, right: 0, zIndex: 5, overflow: "visible",
-          paddingTop: "env(safe-area-inset-top, 0px)", boxSizing: "border-box",
+          paddingTop: SAFE_TOP, boxSizing: "border-box",
         },
       } : { key: "bar" },
         // The scroll-edge effect: content passing under the bar is frosted
@@ -841,9 +857,11 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           key: "frost",
           style: {
             position: "absolute", inset: 0, pointerEvents: "none",
-            backdropFilter: "blur(18px) saturate(1.3)", WebkitBackdropFilter: "blur(18px) saturate(1.3)",
-            maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
-            WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
+            // From the top of the screen (the status bar's safe area) to
+            // the bottom of the bar, easing out: soft enough that the
+            // content still reads through it near the bar's lower edge.
+            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+            maskImage: FROST_MASK, WebkitMaskImage: FROST_MASK,
           },
         }) : null,
         navBar({
@@ -911,11 +929,17 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }
     if (pinned) {
       // remount per level: a push swaps the screen
-      rows.push(insetContent(`content:${depth}`, kids, ownsEdgeScroll));
+      rows.push(insetContent(`content:${depth}`, kids, ownsEdgeScroll, true));
     } else {
+      // The bar and title rows start below the status bar (a home-screen
+      // web app draws under it); what they sit over is below it already.
+      if (rows.length) rows.unshift(h("div", { key: "safe-top", style: { height: SAFE_TOP, flex: "none" } }));
       rows.push(h("div", {
         key: `content:${depth}`, // remount per level: a push swaps the screen
-        style: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, alignSelf: "stretch" },
+        style: {
+          display: "flex", flexDirection: "column", flex: 1, minHeight: 0, alignSelf: "stretch",
+          ...(rows.length > 1 ? { "--uui-safe-top": "0px" } : {}),
+        },
       }, kids));
     }
     return h("div", {
@@ -925,7 +949,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         display: "flex", flexDirection: "column", flex: 1, position: "relative",
         minHeight: 0, minWidth: 0, alignSelf: "stretch", width: "100%",
         color: dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.85)",
-        ...(pinned ? { "--uui-inset-top": "calc(52px + env(safe-area-inset-top, 0px))" } : {}),
+        ...(pinned ? { "--uui-inset-top": `calc(52px + ${SAFE_TOP})` } : {}),
       },
     }, rows);
   }
@@ -1361,6 +1385,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // (`--uui-inset-top/bottom`) from the chrome's container to the scroll,
   // which consumes them as padding and zeroes them for its descendants.
   // Content that is not a scroll is simply laid out inside the insets.
+  // The scroll-edge frost's fade: whole under the status bar and the top of
+  // the bar, then easing to nothing at the bar's bottom edge.
+  const FROST_MASK = "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 45%, rgba(0,0,0,0.45) 75%, rgba(0,0,0,0) 100%)";
   const BAR_BACKGROUND = (dark) => dark ? "rgba(28,28,30,0.82)" : "rgba(249,249,249,0.82)";
   // Apple's grouped palette (systemGroupedBackground,
   // secondarySystemGroupedBackground, separator).
@@ -1384,6 +1411,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // `.listRowSeparator(.hidden)`: no lines between the rows of this list.
   let currentListSeparators = true;
   const INSET_TOP = "var(--uui-inset-top, 0px)";
+  // The top safe area a pinned bar reaches into: the screen's (the status
+  // bar), except in a sheet, whose top edge is below it.
+  const SAFE_TOP = "var(--uui-safe-top, env(safe-area-inset-top, 0px))";
   const INSET_BOTTOM = "var(--uui-inset-bottom, 0px)";
   const edgeScrolls = new WeakSet();
   // Custom properties resolve on the element that declares them, so a box
@@ -1403,6 +1433,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // `.background` / `.overlay` layers ride alongside the content.
       const ch = (node.ch || []).filter((c) => !(c.params && c.params.layer));
       if (node.k === "stack" && p.inset) { node = ch[p.inset === "top" ? 1 : 0]; continue; }
+      // A ZStack of a backdrop (a colour or shape filling the screen) and
+      // the content: the backdrop sits under the chrome with the rest.
+      if (node.k === "stack" && node.axis === "z") {
+        const content = ch.filter((c) => c.k !== "shape" && c.k !== "gradient");
+        if (content.length !== 1) return null;
+        node = content[0];
+        continue;
+      }
       if (node.k === "box" || (node.k === "stack" && node.axis === "v")) {
         if (ch.length !== 1) return null;
         node = ch[0];
@@ -1421,10 +1459,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // The content side of pinned chrome: fills the container; unless its
   // content is an edge scroll (which takes the insets as padding), the
   // insets become the content's own padding.
-  function insetContent(key, kids, hasEdgeScroll) {
+  function insetContent(key, kids, hasEdgeScroll, belowTopChrome) {
     const style = {
       display: "flex", flexDirection: "column", flex: 1, minHeight: 0, minWidth: 0,
       alignSelf: "stretch", width: "100%", position: "relative", boxSizing: "border-box",
+      // Chrome at the top took the status bar's safe area.
+      ...(belowTopChrome ? { "--uui-safe-top": "0px" } : {}),
     };
     if (!hasEdgeScroll) {
       style.paddingTop = INSET_TOP;
@@ -1460,15 +1500,22 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         [edge === "top" ? "top" : "bottom"]: 0,
         display: "flex", flexDirection: "column", alignItems: "stretch",
         boxSizing: "border-box",
-        [edge === "top" ? "paddingTop" : "paddingBottom"]: `env(safe-area-inset-${edge}, 0px)`,
+        // The bottom one sits on the keyboard when it is up (the surface
+        // pads the keyboard's height; this stack reaches down into it).
+        [edge === "top" ? "paddingTop" : "paddingBottom"]: edge === "top"
+          ? SAFE_TOP
+          : "calc(var(--uui-keyboard, 0px) + var(--uui-safe-bottom, env(safe-area-inset-bottom, 0px)))",
         // No fill of its own: as on iOS, the inset's content draws what it
         // wants (a composer pill), and the scroll shows through around it.
       },
     }, kids[insetIndex]);
     return h("div", {
       ref,
-      style: { ...style, display: "flex", flexDirection: "column", position: "relative", minHeight: 0, minWidth: 0 },
-    }, insetContent("content", kids[contentIndex], hasEdgeScroll), bar);
+      style: {
+        ...style, display: "flex", flexDirection: "column", position: "relative", minHeight: 0, minWidth: 0,
+        ...(edge === "bottom" ? { marginBottom: "calc(-1 * var(--uui-keyboard, 0px))" } : {}),
+      },
+    }, insetContent("content", kids[contentIndex], hasEdgeScroll, edge === "top"), bar);
   }
 
   // `ScrollViewProxy.scrollTo(id, anchor:)`: the core sends the latest
@@ -1998,7 +2045,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       style: panelStyle,
     }, grabber ? h("div", { key: "grab", style: { alignSelf: "center", width: 36, height: 5, borderRadius: 3, background: "rgba(120,120,128,0.45)", margin: "6px 0 2px", flex: "none" } }) : null,
        // The body keeps the home indicator's inset below its last row.
-       h("div", { key: "body", className: "uui-sheet-body", style: { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflowY: greedy ? "hidden" : "auto", "--uui-inset-bottom": compact ? "var(--uui-safe-bottom, env(safe-area-inset-bottom, 0px))" : "0px" } }, kids)));
+       h("div", { key: "body", className: "uui-sheet-body", style: { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "stretch", overflowY: greedy ? "hidden" : "auto", "--uui-safe-top": "0px", ...(pageDark() ? { "--uui-sheet-grouped-bg": "#1c1c1e", "--uui-sheet-cell-bg": "#2c2c2e" } : {}), "--uui-inset-bottom": compact ? "var(--uui-safe-bottom, env(safe-area-inset-bottom, 0px))" : "0px" } }, kids)));
   }
 
   let renderDepth = 0;
@@ -2333,8 +2380,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }
         if (insetGrouped) {
           const dark = pageDark();
-          s.background = GROUPED_BACKGROUND(dark);
-          s["--uui-cell-bg"] = CELL_BACKGROUND(dark);
+          // In a sheet the grouped ground and cells take the sheet's own
+          // (elevated) colours, as iOS raises a sheet's grouped list.
+          s.background = `var(--uui-sheet-grouped-bg, ${GROUPED_BACKGROUND(dark)})`;
+          s["--uui-cell-bg"] = `var(--uui-sheet-cell-bg, ${CELL_BACKGROUND(dark)})`;
           s["--uui-separator"] = SEPARATOR(dark);
           kids = h("div", { key: "grouped", className: "uui-ig" }, kids);
         }
