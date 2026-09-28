@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3587819829";
-import { storeFiles } from "./imported_files.js?v=3587819829";
+import { SYMBOLS } from "./symbols.js?v=3076105245";
+import { storeFiles } from "./imported_files.js?v=3076105245";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -1541,6 +1541,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const bar = h("div", {
       key: "inset",
       ref: barRef,
+      ...(fixed ? { "data-uui-inset-bar": edge } : {}),
       style: {
         // On a document-scrolled page the bar is in the page's flow, after
         // (or before) the content, and sticks to the viewport's edge as the
@@ -1582,6 +1583,17 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }, insetContent("content", kids[contentIndex], hasEdgeScroll, edge === "top"), bar);
   }
 
+  // A document-scrolled page's visible bottom: the window's, or the top of
+  // a bottom `.safeAreaInset` bar stuck over it.
+  function documentVisibleBottom() {
+    let bottom = window.innerHeight;
+    for (const bar of document.querySelectorAll('[data-uui-inset-bar="bottom"]')) {
+      const r = bar.getBoundingClientRect();
+      if (r.height > 0) bottom = Math.min(bottom, r.top);
+    }
+    return bottom;
+  }
+
   // `ScrollViewProxy.scrollTo(id, anchor:)`: the core sends the latest
   // request ("id|tick|anchor") to every scroll; the one holding a view with
   // that id brings it to the anchor, once per request, after the render
@@ -1599,7 +1611,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // inside the content insets.
     const cs = getComputedStyle(el);
     // A document-scrolled screen is measured against the window.
-    const outer = doc ? { top: 0, bottom: window.innerHeight } : el.getBoundingClientRect();
+    // Its bottom bar (a composer) is in the page's flow, not an inset: what
+    // is visible ends where the bar begins.
+    const outer = doc ? { top: 0, bottom: documentVisibleBottom() } : el.getBoundingClientRect();
     const box = { top: outer.top + (parseFloat(cs.scrollPaddingTop) || 0), bottom: outer.bottom - (parseFloat(cs.scrollPaddingBottom) || 0) };
     box.height = box.bottom - box.top;
     const r = node.getBoundingClientRect();
@@ -1647,48 +1661,55 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     };
   }
 
-  function RequestedScroll({ divProps, children, request, windowId, doc, id }) {
+  // A scroll the renderer keeps a hand on: `ScrollViewProxy.scrollTo`
+  // requests, a lazy List's window, the page's scroll when it is document-
+  // scrolled, and `.defaultScrollAnchor(.bottom)` (a chat log: start at the
+  // bottom and stay pinned there as content grows, until the reader scrolls
+  // up). One component whatever the anchor, so the anchor changing (AgentUI
+  // holds the top for the moment rows are appended, then scrolls down to
+  // them) keeps the scroll and its rows rather than building them again.
+  function ManagedScroll({ divProps, children, request, windowId, doc, id, bottom }) {
     const ref = R.useRef(null);
     const applied = R.useRef(null);
-    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied, doc));
     const onWindowScroll = useListWindow(ref, windowId, doc);
-    // Document-scrolled: the page's scroll is this screen's while it is
-    // shown — back where it was, and reporting as the page scrolls.
-    R.useLayoutEffect(() => {
-      if (!doc) return undefined;
-      window.scrollTo(0, documentScrollPositions.get(id) || 0);
-      const onScroll = () => { documentScrollPositions.set(id, window.scrollY); onWindowScroll(); };
-      window.addEventListener("scroll", onScroll, { passive: true });
-      return () => window.removeEventListener("scroll", onScroll);
-    }, [doc, id]);
-    const onScroll = divProps.onScroll;
-    return h("div", { ...divProps, ref, onScroll: (e) => { if (onScroll) onScroll(e); onWindowScroll(); } }, children);
-  }
-
-  function BottomAnchoredScroll({ divProps, children, request, windowId, doc }) {
-    const ref = R.useRef(null);
-    const applied = R.useRef(null);
-    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied, doc));
-    const onWindowScroll = useListWindow(ref, windowId, doc);
+    const anchored = R.useRef(bottom);
+    anchored.current = bottom;
     const pinned = R.useRef(true);
+    const last = R.useRef({ top: 0, max: 0 });
     const pin = () => {
       const el = ref.current;
-      if (!el || !pinned.current) return;
+      if (!el || !anchored.current || !pinned.current) return;
       if (doc) window.scrollTo(0, document.documentElement.scrollHeight);
       else el.scrollTop = el.scrollHeight;
     };
-    // Document-scrolled: the page's scroll moves the pin.
-    R.useEffect(() => {
+    // Only the reader scrolling up lets go of the bottom: content growing
+    // between a pin and the scroll event it causes leaves a few pixels
+    // below, and content shrinking pulls the scroll up with it — neither
+    // is the reader leaving.
+    const track = (top, max) => {
+      if (top >= max - 4) pinned.current = true;
+      else if (top < last.current.top - 1 && max >= last.current.max) pinned.current = false;
+      last.current = { top, max };
+    };
+    // Document-scrolled: the page's scroll is this screen's while it is
+    // shown — back where it was (or at the bottom, anchored there), and
+    // reporting as the page scrolls.
+    R.useLayoutEffect(() => {
       if (!doc) return undefined;
+      if (!anchored.current) window.scrollTo(0, documentScrollPositions.get(id) || 0);
       const onScroll = () => {
+        documentScrollPositions.set(id, window.scrollY);
         const page = document.documentElement;
-        pinned.current = window.scrollY + window.innerHeight >= page.scrollHeight - 4;
+        track(window.scrollY, page.scrollHeight - window.innerHeight);
         onWindowScroll();
       };
       window.addEventListener("scroll", onScroll, { passive: true });
       return () => window.removeEventListener("scroll", onScroll);
-    }, [doc]);
-    R.useLayoutEffect(pin);
+    }, [doc, id]);
+    R.useLayoutEffect(() => {
+      applyScrollRequest(ref.current, request, applied, doc);
+      pin();
+    });
     // The viewport shrinking (the soft keyboard) resizes the scroll without
     // a re-render: stay at the bottom through that too, as Messages does.
     R.useEffect(() => {
@@ -1713,7 +1734,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       ref,
       onScroll: (e) => {
         const el = e.currentTarget;
-        pinned.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+        if (!doc) track(el.scrollTop, el.scrollHeight - el.clientHeight);
         if (divProps.onScroll) divProps.onScroll(e);
         onWindowScroll();
       },
@@ -2598,10 +2619,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         // and stay pinned there as content grows, until the user scrolls up.
         const request = (n.params || {}).scrollTo;
         const windowId = (n.params || {}).window;
-        if ((n.params || {}).anchor === "bottom") {
-          return h(BottomAnchoredScroll, { key, divProps: props, request, windowId, doc: documentScrolled }, kids);
+        const bottom = (n.params || {}).anchor === "bottom";
+        if (bottom || request || windowId || documentScrolled) {
+          return h(ManagedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key, bottom }, kids);
         }
-        if (request || windowId || documentScrolled) return h(RequestedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key }, kids);
         return h("div", props, kids);
       case "image": {
         const src = /^(https?:|data:|blob:)/.test(n.src) ? n.src : assetBase + n.src + (n.src.includes(".") ? "" : ".png");
