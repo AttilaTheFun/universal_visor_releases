@@ -12,7 +12,7 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3741306334";
+import { SYMBOLS } from "./symbols.js?v=2126548944";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -206,28 +206,79 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         width: "auto", height: "auto", flex: "none",
       };
     }
-    if (n.drag) {
-      // A guest DragGesture: pointer capture, translation reported as
-      // "changed:x,y" while moving and "ended:x,y" on release.
+    const magnify = (n.params || {}).magnify;
+    if (n.drag || magnify) {
+      // A guest `.gesture`: pointer capture; the drag reports the pointers'
+      // travel ("changed:x,y" / "ended:x,y") and a pinch the spread of two
+      // fingers since it began ("changed:m" / "ended:m"). A trackpad pinch
+      // arrives as ctrl+wheel, and ends once it pauses.
+      if (magnify) s.touchAction = "none";
+      const state = (el) => (el.__uuiGesture ||= { points: new Map(), start: null, spread: null, zoom: 1, moved: { x: 0, y: 0 } });
+      const centroid = (points) => {
+        let x = 0, y = 0;
+        for (const p of points.values()) { x += p.x; y += p.y; }
+        return { x: x / points.size, y: y / points.size };
+      };
+      const spread = (points) => {
+        const [a, b] = [...points.values()];
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      };
       props.onPointerDown = (e) => {
+        const st = state(e.currentTarget);
         e.currentTarget.setPointerCapture(e.pointerId);
-        e.currentTarget.__uuiDragStart = { x: e.clientX, y: e.clientY };
+        st.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const c = centroid(st.points);
+        // A finger joining or leaving restarts the reference points, so the
+        // translation carries on from where it was.
+        st.start = { x: c.x - st.moved.x, y: c.y - st.moved.y };
+        if (st.points.size === 2) st.spread = { base: spread(st.points), zoom: st.zoom };
       };
       props.onPointerMove = (e) => {
-        const start = e.currentTarget.__uuiDragStart;
-        if (!start) return;
-        sendEvent(n.drag, `changed:${e.clientX - start.x},${e.clientY - start.y}`);
+        const st = e.currentTarget.__uuiGesture;
+        if (!st || !st.points.has(e.pointerId)) return;
+        st.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const c = centroid(st.points);
+        st.moved = { x: c.x - st.start.x, y: c.y - st.start.y };
+        if (n.drag) sendEvent(n.drag, `changed:${st.moved.x},${st.moved.y}`);
+        if (magnify && st.points.size === 2 && st.spread && st.spread.base > 0) {
+          st.zoom = st.spread.zoom * spread(st.points) / st.spread.base;
+          sendEvent(magnify, `changed:${st.zoom}`);
+        }
       };
       const end = (e) => {
-        const start = e.currentTarget.__uuiDragStart;
-        if (!start) return;
-        e.currentTarget.__uuiDragStart = null;
-        sendEvent(n.drag, `ended:${e.clientX - start.x},${e.clientY - start.y}`);
+        const st = e.currentTarget.__uuiGesture;
+        if (!st || !st.points.has(e.pointerId)) return;
+        st.points.delete(e.pointerId);
+        if (st.points.size > 0) {
+          const c = centroid(st.points);
+          st.start = { x: c.x - st.moved.x, y: c.y - st.moved.y };
+          st.spread = null;
+          return;
+        }
+        if (n.drag) sendEvent(n.drag, `ended:${st.moved.x},${st.moved.y}`);
+        if (magnify) sendEvent(magnify, `ended:${st.zoom}`);
+        e.currentTarget.__uuiGesture = null;
       };
       props.onPointerUp = end;
       props.onPointerCancel = end;
+      if (magnify) {
+        props.onWheel = (e) => {
+          if (!e.ctrlKey) return;
+          e.preventDefault();
+          const el = e.currentTarget;
+          const st = state(el);
+          st.zoom *= Math.exp(-e.deltaY / 100);
+          sendEvent(magnify, `changed:${st.zoom}`);
+          clearTimeout(st.wheelEnd);
+          st.wheelEnd = setTimeout(() => { sendEvent(magnify, `ended:${st.zoom}`); el.__uuiGesture = null; }, 150);
+        };
+      }
     }
-    if (n.tap) {
+    if (n.tap && (n.params || {}).tapCount === "2") {
+      // `onTapGesture(count: 2)`: a double tap.
+      props["data-tap"] = n.tap;
+      props.onDoubleClick = () => sendEvent(n.tap, "");
+    } else if (n.tap) {
       props["data-tap"] = n.tap; // exposed for headless smoke tests
       props.onClick = (e) => {
         e.stopPropagation();
@@ -1127,8 +1178,10 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     const lastPane = paneCount - 1;
     const [pane, setPaneState] = R.useState(Math.min(preferredPane ?? 0, lastPane));
     const setPane = (next) => {
+      // ":back" when the pane went back: the guest clears the selections
+      // past it, as SwiftUI's compact split does.
+      if (edit) sendEvent(edit, "compact:" + paneNames[next] + (next < pane ? ":back" : ""));
       setPaneState(next);
-      if (edit) sendEvent(edit, "compact:" + paneNames[next]);
     };
     // The guest asks to advance when a column's List selection changes (a
     // row tap or a programmatic selection) — SwiftUI's phone behavior.
