@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=4062938451";
-import { storeFiles } from "./imported_files.js?v=4062938451";
+import { SYMBOLS } from "./symbols.js?v=2502508894";
+import { storeFiles } from "./imported_files.js?v=2502508894";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -1968,13 +1968,47 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     return null;
   }
 
+  // The fill of the backdrop a content paints behind itself (a Form's
+  // grouped ground: a full-bleed shape under its scroll in a ZStack),
+  // through plain wrappers and a navigation stack.
+  function backdropFill(start) {
+    let node = start;
+    for (let depth = 0; node && depth < 10; depth++) {
+      const ch = (node.ch || []).filter((c) => !(c.params && c.params.layer));
+      if (node.k === "hostView" && node.view === "navstack") { node = ch[0]; continue; }
+      if (node.k === "stack" && node.axis === "z") {
+        const first = ch[0];
+        return first && first.k === "shape" && first.expandH && first.fill ? rgba(first.fill) : null;
+      }
+      if ((node.k === "box" || (node.k === "stack" && node.axis === "v")) && ch.length === 1) { node = ch[0]; continue; }
+      return null;
+    }
+    return null;
+  }
+
+  // Whether a presentation's content is a grouped list (through its
+  // navigation stack and plain wrappers).
+  function sheetHoldsGroupedList(n) {
+    let content = (n.ch || [])[0];
+    if (content && content.k === "hostView" && content.view === "navstack") content = (content.ch || [])[0];
+    const scroll = edgeScroll(content);
+    const p = (scroll && scroll.params) || {};
+    return !!p.list && p.listStyle !== "plain";
+  }
+
   function presentation(n, kids) {
     if ((n.params || {}).request) return h(PickerRequest, { key: n.dismiss, n });
     const isAlert = n.style === "alert";
     // Panel chrome colors ride the node, scheme-resolved by the serializer
     // (Color.secondaryBackground / Color.primary) — never hardcode a light
     // palette here, or dark-scheme presented content renders white-on-white.
-    const panelBg = rgba(n.bg) || "#fff";
+    // A sheet is its content's ground all the way up, behind the grabber
+    // too, as an iPhone draws it: a Form's grouped backdrop, or a grouped
+    // list's.
+    const backdrop = n.style !== "alert" ? backdropFill((n.ch || [])[0]) : null;
+    const panelBg = backdrop
+      || (n.style !== "alert" && sheetHoldsGroupedList(n) ? (pageDark() ? "#1c1c1e" : GROUPED_BACKGROUND(false)) : null)
+      || rgba(n.bg) || "#fff";
     const headColor = n.color ? rgba(n.color) : undefined;
     const messageColor = n.color
       ? rgba([n.color[0], n.color[1], n.color[2], n.color[3] * 0.65])
