@@ -4,11 +4,11 @@
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { importedFilesWasi } from "./imported_files.js?v=1807176032";
-import { load } from "../app_bridge.js?v=1807176032";
-import { createRasterHost } from "./raster.js?v=1807176032";
-import { createReactTreeRenderer } from "./react_renderer.js?v=1807176032";
-import { applyPatch } from "./flat_tree.js?v=1807176032";
+import { importedFilesWasi } from "./imported_files.js?v=3468531818";
+import { load } from "../app_bridge.js?v=3468531818";
+import { createRasterHost } from "./raster.js?v=3468531818";
+import { createReactTreeRenderer } from "./react_renderer.js?v=3468531818";
+import { applyPatch } from "./flat_tree.js?v=3468531818";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -40,7 +40,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1807176032");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=3468531818");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -65,25 +65,7 @@ export async function boot({
     // scrolls the page to show the focused field, carrying the pinned bars
     // off the top. Size the surface to the visual viewport instead, so the
     // bars stay and only the content between them shrinks (the iOS shape).
-    if (window.visualViewport && canvas.parentElement === document.body && documentScroll) {
-      // A document-scrolled page: the surface runs on as tall as its
-      // content (the page scrolls, not the surface). Its chrome is fixed or
-      // sticky, so the browser itself keeps a focused field above the
-      // keyboard; while one is focused the home indicator's inset is dropped.
-      treeContainer.style.overflow = "visible";
-      treeContainer.style.bottom = "auto";
-      treeContainer.style.height = "auto";
-      treeContainer.style.minHeight = "100%";
-      treeContainer.dataset.uuiDocument = "1";
-      const editing = () => {
-        const active = document.activeElement;
-        return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
-      };
-      const inset = () => treeContainer.style.setProperty("--uui-safe-bottom", editing() ? "0px" : "env(safe-area-inset-bottom, 0px)");
-      document.addEventListener("focusin", inset);
-      document.addEventListener("focusout", () => setTimeout(inset, 0));
-      inset();
-    } else if (window.visualViewport && canvas.parentElement === document.body) {
+    if (window.visualViewport && canvas.parentElement === document.body) {
       const viewport = window.visualViewport;
       // The surface follows the keyboard both ways with the same easing
       // (Safari animates the viewport in, not out), and the home-indicator
@@ -116,7 +98,37 @@ export async function boot({
         return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
       };
       let restHeight = pageHeight();
+      // Document scrolling (documentScroll) holds only while the page is
+      // phone-width, as the renderer's own test (isDesktop) has it: a wide
+      // page keeps the fixed, clipped surface its desktop layout needs.
+      // The mode follows the window across that line.
+      let inDocument = null;
+      const surface = treeContainer.style.cssText;
+      const applyMode = () => {
+        const next = documentScroll && window.innerWidth < 700;
+        if (next === inDocument) return;
+        inDocument = next;
+        document.documentElement.classList.toggle("uui-document", next);
+        if (next) {
+          // The surface runs on as tall as its content (the page scrolls,
+          // not the surface); its chrome is fixed or sticky, so the browser
+          // itself keeps a focused field above the keyboard.
+          treeContainer.style.cssText = "position:absolute;left:0;right:0;top:0;overflow:visible;display:flex;flex-direction:column;min-height:100%";
+          treeContainer.dataset.uuiDocument = "1";
+        } else {
+          treeContainer.style.cssText = surface;
+          treeContainer.style.transition = "height 0.25s ease-out, top 0.25s ease-out";
+          treeContainer.style.boxSizing = "border-box";
+          delete treeContainer.dataset.uuiDocument;
+        }
+        fit();
+      };
       const fit = () => {
+        if (inDocument) {
+          // Only the home indicator's inset, dropped while a field is focused.
+          treeContainer.style.setProperty("--uui-safe-bottom", editing() ? "0px" : "env(safe-area-inset-bottom, 0px)");
+          return;
+        }
         if (!editing()) restHeight = pageHeight();
         const keyboard = Math.max(0, Math.round(restHeight - viewport.height - viewport.offsetTop));
         const keyboardUp = editing() && keyboard > 120;
@@ -135,6 +147,8 @@ export async function boot({
       // A field gaining or losing focus changes what the viewport means.
       document.addEventListener("focusin", () => setTimeout(fit, 0));
       document.addEventListener("focusout", () => setTimeout(fit, 0));
+      window.addEventListener("resize", applyMode);
+      applyMode();
       // The page runs the whole screen too, so nothing clips the surface
       // at the short viewport's edge.
       if (navigator.standalone === true) {
@@ -188,7 +202,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1807176032");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=3468531818");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -538,7 +552,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=1807176032"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=3468531818"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 
