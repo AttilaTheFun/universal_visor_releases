@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3076105245";
-import { storeFiles } from "./imported_files.js?v=3076105245";
+import { SYMBOLS } from "./symbols.js?v=705157886";
+import { storeFiles } from "./imported_files.js?v=705157886";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -2260,6 +2260,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   }, (a, b) => a.n === b.n && a.axis === b.axis && a.listStyle === b.listStyle
     && a.separators === b.separators && a.sidebar === b.sidebar);
 
+  // The fixed frame (`.frame(width:height:)`) directly around the node being
+  // rendered, if any: which of its dimensions are set.
+  let sizedByFrame = null;
   function render(n, key, parentAxis) {
     renderDepth += 1;
     const presented = n.k === "presentation";
@@ -2321,6 +2324,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     }
     if ((parentAxis === "v" && n.growW) || (parentAxis === "h" && n.growH)) {
       s.alignSelf = "stretch";
+    }
+    // A `Grid`'s line that is not a row (a divider) spans every column.
+    const gridLine = (n.params || {}).gridLine;
+    if (gridLine != null && !(n.params || {}).gridRow) {
+      s.gridRow = Number(gridLine) + 1;
+      s.gridColumn = "1 / -1";
     }
     // A flex child may not shrink below its content by default, so one long
     // word (a resume command, an address) widens the whole row. SwiftUI
@@ -2435,8 +2444,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         }
         // The split's first column is its sidebar.
         if (isSplit && i === 0) inSidebar++;
+        // A frame's own size is its child's to fill (a 1pt hairline is
+        // `Rectangle().frame(height: 1)`): no minimum of the shape's own.
+        const sizedBefore = sizedByFrame;
+        sizedByFrame = n.k === "box" ? { w: n.width != null, h: n.height != null } : null;
         try { return render(c, childKey, childAxis); }
-        finally { if (isSplit && i === 0) inSidebar--; }
+        finally { sizedByFrame = sizedBefore; if (isSplit && i === 0) inSidebar--; }
       });
     } finally {
       currentListStyle = previousListStyle;
@@ -2446,6 +2459,33 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
 
     switch (n.k) {
       case "stack": {
+        // `Grid`: a CSS grid of auto columns — each as wide as its widest
+        // cell, shrinking toward its narrowest (text wrapping, its row
+        // growing) when the grid is offered less, as a table does.
+        if ((n.params || {}).grid) {
+          const rows = (n.ch || []).filter((c) => (c.params || {}).gridRow);
+          s.display = "grid";
+          s.gridTemplateColumns = `repeat(${Number(n.params.grid)}, auto)`;
+          s.columnGap = rows.length && rows[0].spacing != null ? rows[0].spacing : 8;
+          s.rowGap = n.spacing != null ? n.spacing : 8;
+          s.justifyContent = "start";
+          s.minWidth = 0;
+          s.maxWidth = "100%";
+          return h("div", props, kids);
+        }
+        // A `GridRow`: no box of its own; its cells go straight into the
+        // grid's columns, on its line.
+        if ((n.params || {}).gridRow) {
+          const line = Number((n.params || {}).gridLine || 0) + 1;
+          return h(R.Fragment, { key }, kids.map((kid, i) => h("div", {
+            key: i,
+            style: {
+              gridRow: line, gridColumn: i + 1,
+              justifySelf: alignCSS[n.alignH] || "center", alignSelf: alignCSS[n.alignV] || "center",
+              display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%",
+            },
+          }, kid)));
+        }
         if ((n.params || {}).inset && kids.length === 2) {
           return h(InsetStack, { key, n, style: s, kids, edge: n.params.inset, hasEdgeScroll: ownsEdgeScroll, fixed: docScroll() && ownsEdgeScroll });
         }
@@ -2692,8 +2732,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         if (n.shape === "capsule") s.borderRadius = 9999;
         if (n.fill) s.background = rgba(n.fill);
         if (n.stroke) s.border = `${n.strokeWidth || 1}px solid ${rgba(n.stroke)}`;
-        if (n.width == null && !n.expandW) s.minWidth = 10;
-        if (n.height == null && !n.expandH) s.minHeight = 10;
+        if (n.width == null && !n.expandW && !(sizedByFrame && sizedByFrame.w)) s.minWidth = 10;
+        if (n.height == null && !n.expandH && !(sizedByFrame && sizedByFrame.h)) s.minHeight = 10;
         s.display = "grid";
         s.placeItems = "center";
         return h("div", props, kids);
