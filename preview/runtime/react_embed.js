@@ -14,15 +14,15 @@
 // Uses the page's React (`window.React`, the same UMD global the tree renderer
 // uses), so the host app and the embedded surface share one React.
 //
-//   const { UniversalUI } = await import("./runtime/react_embed.js?v=2574917993");
-//   <UniversalUI wasmURL="./app.wasm?v=2574917993" renderer="react" style={{ height: 480 }} />
+//   const { UniversalUI } = await import("./runtime/react_embed.js?v=1807176032");
+//   <UniversalUI wasmURL="./app.wasm?v=1807176032" renderer="react" style={{ height: 480 }} />
 //   // or, with hot reload / dynamic delivery:
-//   <UniversalUI provider={appBundleProvider("./app.wasm?v=2574917993", { hotReloadURL })} />
+//   <UniversalUI provider={appBundleProvider("./app.wasm?v=1807176032", { hotReloadURL })} />
 
-import { mountUniversalUI } from "./boot.js?v=2574917993";
-import { packagedBundleProvider } from "./bundle_provider.js?v=2574917993";
+import { mountUniversalUI } from "./boot.js?v=1807176032";
+import { packagedBundleProvider } from "./bundle_provider.js?v=1807176032";
 
-export function UniversalUI({ provider, wasmURL = "./app.wasm?v=2574917993", renderer = "react", style }) {
+export function UniversalUI({ provider, wasmURL = "./app.wasm?v=1807176032", renderer = "react", style }) {
   const R = window.React;
   const ref = R.useRef(null);
   R.useEffect(() => {
