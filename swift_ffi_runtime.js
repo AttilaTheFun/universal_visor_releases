@@ -91,13 +91,8 @@ export function registerForeign(dispatcher) {
 const WASI_SUCCESS = 0;
 const WASI_EBADF = 8;
 const WASI_ENOSYS = 52;
-/** The minimal WASI surface a swift_ffi reactor touches (it performs no
- * I/O of its own). Randomness is REAL (`crypto.getRandomValues` — guest
- * crypto bottoms out in `random_get`, so it must never be a toy PRNG),
- * clocks are real (Foundation's `__CFDateInitialize` traps on a failing
- * clock), and guest stdout/stderr reach the console. `overrides` merges over
- * the built-ins, so a host can extend or replace any call without forking. */
-export function wasiShim(getMemory, overrides = {}) {
+export function wasiShim(getMemory, overridesOrFactory = {}) {
+    const overrides = typeof overridesOrFactory === "function" ? overridesOrFactory(getMemory) : overridesOrFactory;
     const view = () => new DataView(getMemory().buffer);
     // Guest stdout/stderr, buffered to newlines per fd.
     const lineBuffers = new Map();

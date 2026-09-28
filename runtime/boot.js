@@ -4,10 +4,11 @@
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { load } from "../app_bridge.js?v=4108825299";
-import { createRasterHost } from "./raster.js?v=4108825299";
-import { createReactTreeRenderer } from "./react_renderer.js?v=4108825299";
-import { applyPatch } from "./flat_tree.js?v=4108825299";
+import { importedFilesWasi } from "./imported_files.js?v=663322689";
+import { load } from "../app_bridge.js?v=663322689";
+import { createRasterHost } from "./raster.js?v=663322689";
+import { createReactTreeRenderer } from "./react_renderer.js?v=663322689";
+import { applyPatch } from "./flat_tree.js?v=663322689";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -35,7 +36,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=4108825299");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=663322689");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -150,7 +151,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=4108825299");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=663322689");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -400,7 +401,13 @@ export async function boot({
   const module = bundle
     ? await WebAssembly.compile(bundle.wasm ?? bundle)
     : await WebAssembly.compileStreaming(fetch(wasmURL));
-  bridge = await load(module, { dependencies, wasi });
+  // Picked and dropped files live in an in-memory directory the guest's
+  // Foundation reads through WASI; a page's own overrides go on top.
+  const wasiWithFiles = (getMemory) => ({
+    ...importedFilesWasi(getMemory),
+    ...(typeof wasi === "function" ? wasi(getMemory) : (wasi || {})),
+  });
+  bridge = await load(module, { dependencies, wasi: wasiWithFiles });
   if (gpuHost) {
     bridge.gpuConnect(gpuHost); // swift_gpu's WebGPU executor
     bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -493,7 +500,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=4108825299"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=663322689"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 

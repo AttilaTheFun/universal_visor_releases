@@ -12,7 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=4108825299";
+import { SYMBOLS } from "./symbols.js?v=663322689";
+import { storeFiles } from "./imported_files.js?v=663322689";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -285,6 +286,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           st.wheelEnd = setTimeout(() => { sendEvent(magnify, `ended:${st.zoom}`); el.__uuiGesture = null; }, 150);
         };
       }
+    }
+    // `.dropDestination`: files dragged over and dropped on the view.
+    const drop = (n.params || {}).drop;
+    if (drop) {
+      const carriesFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes("Files");
+      props.onDragOver = (e) => { if (carriesFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } };
+      props.onDragEnter = (e) => { if (carriesFiles(e)) sendEvent(drop, "over:1"); };
+      props.onDragLeave = (e) => { if (!e.currentTarget.contains(e.relatedTarget)) sendEvent(drop, "over:0"); };
+      props.onDrop = async (e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        sendEvent(drop, "over:0");
+        const paths = await storeFiles(e.dataTransfer.files);
+        if (paths.length) sendEvent(drop, paths.join("\n"));
+      };
     }
     if (n.tap && (n.params || {}).tapCount === "2") {
       // `onTapGesture(count: 2)`: a double tap.
@@ -1917,7 +1933,41 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     });
   }
 
+  // A request presentation: the browser's own picker (a file input, with
+  // `capture` for the camera), answered with the stored files' paths ("" when
+  // cancelled). Nothing is drawn.
+  function PickerRequest({ n }) {
+    R.useEffect(() => {
+      const p = n.params || {};
+      const input = document.createElement("input");
+      input.type = "file";
+      if (p.accept && p.accept !== "*/*") input.accept = p.accept;
+      if (p.multiple === "1") input.multiple = true;
+      if (p.request === "camera") input.capture = "environment";
+      input.style.display = "none";
+      let answered = false;
+      const answer = (value) => {
+        if (answered) return;
+        answered = true;
+        input.remove();
+        sendEvent(p.result, value);
+      };
+      input.addEventListener("change", async () => {
+        let files = Array.from(input.files || []);
+        const max = Number(p.max || 0);
+        if (max > 0) files = files.slice(0, max);
+        answer((await storeFiles(files)).join("\n"));
+      });
+      input.addEventListener("cancel", () => answer(""));
+      document.body.appendChild(input);
+      input.click();
+      return () => { if (!answered) input.remove(); };
+    }, []);
+    return null;
+  }
+
   function presentation(n, kids) {
+    if ((n.params || {}).request) return h(PickerRequest, { key: n.dismiss, n });
     const isAlert = n.style === "alert";
     // Panel chrome colors ride the node, scheme-resolved by the serializer
     // (Color.secondaryBackground / Color.primary) — never hardcode a light
