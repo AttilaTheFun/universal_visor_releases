@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3468531818";
-import { storeFiles } from "./imported_files.js?v=3468531818";
+import { SYMBOLS } from "./symbols.js?v=3587819829";
+import { storeFiles } from "./imported_files.js?v=3587819829";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -87,7 +87,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // Everything around the document-scrolled screen's scroll takes its
       // content's height (at least the viewport's), so the page is as long
       // as the screen's content and sticky chrome in it travels the page.
-      "[data-uui-document] :has([data-document-scroll]){flex:1 0 auto!important;min-height:auto!important;height:auto!important;max-height:none!important}" +
+      // (Stretched, too: a content-sized root is otherwise centered in the
+      // page, and a short screen would sit in the middle of it.)
+      "[data-uui-document] :has([data-document-scroll]){flex:1 0 auto!important;min-height:auto!important;height:auto!important;max-height:none!important;place-self:stretch!important}" +
       "html:not(.uui-document){overscroll-behavior:none;overflow:hidden;height:100%}" +
       "html:not(.uui-document) body{overscroll-behavior:none;overflow:hidden;position:fixed;inset:0;width:100%;height:100dvh;margin:0}" +
       "[data-edge-scroll],.uui-sheet-body,[data-uui-scroll]{overscroll-behavior:contain}" +

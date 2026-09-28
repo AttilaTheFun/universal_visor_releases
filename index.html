@@ -22,8 +22,8 @@
 </head>
 <body>
   <canvas id="canvas"></canvas>
-  <script src="./runtime/react.production.min.js?v=3468531818"></script>
-  <script src="./runtime/react-dom.production.min.js?v=3468531818"></script>
+  <script src="./runtime/react.production.min.js?v=3587819829"></script>
+  <script src="./runtime/react-dom.production.min.js?v=3587819829"></script>
   <script type="module">
     // Surface uncaught errors on the page (no devtools on a phone).
     const showError = (message) => {
@@ -33,15 +33,21 @@
     };
     window.addEventListener("error", (e) => showError((e.message || String(e.error)) + (e.error && e.error.stack ? "\n" + String(e.error.stack).split("\n").slice(0, 6).join("\n") : "")));
     window.addEventListener("unhandledrejection", (e) => showError("unhandled: " + (e.reason && e.reason.stack ? String(e.reason.stack).split("\n").slice(0, 6).join("\n") : String(e.reason))));
-    import { boot } from "./runtime/boot.js?v=3468531818";
-    import { Dependencies } from "./app_bridge.js?v=3468531818";
+    import { boot } from "./runtime/boot.js?v=3587819829";
+    import { Dependencies } from "./app_bridge.js?v=3587819829";
 
     // --- The client's services (libraries/visor_services), in the browser ---
 
     // Settings: localStorage.
     const prefix = "visor.";
+    // The snapshot tests' fixture switch, from the page's URL
+    // (?fixture=snapshot&screen=chat): for this page load only.
+    const launch = new URLSearchParams(location.search);
+    const launchOverrides = {};
+    if (launch.get("fixture")) launchOverrides["fixture"] = launch.get("fixture");
+    if (launch.get("screen")) launchOverrides["fixture.screen"] = launch.get("screen");
     const settings = {
-      get(key) { return localStorage.getItem(prefix + key) || ""; },
+      get(key) { return key in launchOverrides ? launchOverrides[key] : (localStorage.getItem(prefix + key) || ""); },
       set(key, value) { if (value) localStorage.setItem(prefix + key, value); else localStorage.removeItem(prefix + key); },
     };
 
@@ -200,7 +206,7 @@
       settings: Dependencies.settingsBridge(() => settings),
       cache: Dependencies.cacheBridge(() => cache),
     };
-    boot({ canvas: document.getElementById("canvas"), wasmURL: "./app.wasm?v=3468531818", rendererName: "react", dependencies, documentScroll: true })
+    boot({ canvas: document.getElementById("canvas"), wasmURL: "./app.wasm?v=3587819829", rendererName: "react", dependencies, documentScroll: true })
       .catch((error) => { document.body.insertAdjacentHTML("beforeend", '<pre id="error"></pre>'); document.getElementById("error").textContent = String(error); });
   </script>
 </body>
