@@ -4,11 +4,11 @@
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { importedFilesWasi } from "./imported_files.js?v=1515225728";
-import { load } from "../app_bridge.js?v=1515225728";
-import { createRasterHost } from "./raster.js?v=1515225728";
-import { createReactTreeRenderer } from "./react_renderer.js?v=1515225728";
-import { applyPatch } from "./flat_tree.js?v=1515225728";
+import { importedFilesWasi } from "./imported_files.js?v=4062938451";
+import { load } from "../app_bridge.js?v=4062938451";
+import { createRasterHost } from "./raster.js?v=4062938451";
+import { createReactTreeRenderer } from "./react_renderer.js?v=4062938451";
+import { applyPatch } from "./flat_tree.js?v=4062938451";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -36,7 +36,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1515225728");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=4062938451");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -84,20 +84,35 @@ export async function boot({
       const pageHeight = () => navigator.standalone === true
         ? Math.max(window.innerHeight, Math.round(screenProbe.getBoundingClientRect().height))
         : window.innerHeight;
+      // The page's height with no keyboard: the keyboard is measured
+      // against it, not against innerHeight, which on an iPhone shrinks
+      // with the visual viewport when the keyboard comes up (the simulator's
+      // doesn't) — measured that way the keyboard came out as nothing, and
+      // the composer stayed behind it.
+      const editing = () => {
+        const active = document.activeElement;
+        return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+      };
+      let restHeight = pageHeight();
       const fit = () => {
-        const keyboardUp = viewport.height < window.innerHeight - 120;
-        const keyboard = keyboardUp ? Math.max(0, Math.round(pageHeight() - viewport.height - viewport.offsetTop)) : 0;
+        if (!editing()) restHeight = pageHeight();
+        const keyboard = Math.max(0, Math.round(restHeight - viewport.height - viewport.offsetTop));
+        const keyboardUp = editing() && keyboard > 120;
+        const lift = keyboardUp ? keyboard : 0;
         const full = keyboardUp ? Math.round(viewport.height) : Math.max(Math.round(viewport.height), pageHeight());
         treeContainer.style.top = `${Math.max(0, viewport.offsetTop)}px`;
-        treeContainer.style.height = `${full + keyboard}px`;
+        treeContainer.style.height = `${full + lift}px`;
         treeContainer.style.bottom = "auto";
-        treeContainer.style.paddingBottom = `${keyboard}px`;
-        treeContainer.style.setProperty("--uui-keyboard", `${keyboard}px`);
+        treeContainer.style.paddingBottom = `${lift}px`;
+        treeContainer.style.setProperty("--uui-keyboard", `${lift}px`);
         treeContainer.style.setProperty("--uui-safe-bottom", keyboardUp ? "0px" : "env(safe-area-inset-bottom, 0px)");
         if (window.scrollY) window.scrollTo(0, 0);
       };
       viewport.addEventListener("resize", fit);
       viewport.addEventListener("scroll", fit);
+      // A field gaining or losing focus changes what the viewport means.
+      document.addEventListener("focusin", () => setTimeout(fit, 0));
+      document.addEventListener("focusout", () => setTimeout(fit, 0));
       // The page runs the whole screen too, so nothing clips the surface
       // at the short viewport's edge.
       if (navigator.standalone === true) {
@@ -151,7 +166,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1515225728");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=4062938451");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -500,7 +515,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=1515225728"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=4062938451"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 
