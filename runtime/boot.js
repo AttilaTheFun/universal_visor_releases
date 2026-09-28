@@ -4,11 +4,11 @@
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { importedFilesWasi } from "./imported_files.js?v=2502508894";
-import { load } from "../app_bridge.js?v=2502508894";
-import { createRasterHost } from "./raster.js?v=2502508894";
-import { createReactTreeRenderer } from "./react_renderer.js?v=2502508894";
-import { applyPatch } from "./flat_tree.js?v=2502508894";
+import { importedFilesWasi } from "./imported_files.js?v=1807176032";
+import { load } from "../app_bridge.js?v=1807176032";
+import { createRasterHost } from "./raster.js?v=1807176032";
+import { createReactTreeRenderer } from "./react_renderer.js?v=1807176032";
+import { applyPatch } from "./flat_tree.js?v=1807176032";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -25,6 +25,10 @@ export async function boot({
   // WASI shim overrides, merged over the built-ins (extend or replace
   // individual calls — clocks, fds, … — without forking the runtime).
   wasi = undefined,
+  // Document scrolling on a phone-width page (react only): the screen's
+  // scroll is the page's own, its bars fixed over it (react_renderer.js).
+  // Also `?scroll=document` in the page's URL.
+  documentScroll = new URLSearchParams(location.search).get("scroll") === "document",
 } = {}) {
   const react = rendererName === "react";
   // SwiftGPURenderer: Swift draws through swift_gpu's executor; this page
@@ -36,7 +40,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=2502508894");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1807176032");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -61,7 +65,25 @@ export async function boot({
     // scrolls the page to show the focused field, carrying the pinned bars
     // off the top. Size the surface to the visual viewport instead, so the
     // bars stay and only the content between them shrinks (the iOS shape).
-    if (window.visualViewport && canvas.parentElement === document.body) {
+    if (window.visualViewport && canvas.parentElement === document.body && documentScroll) {
+      // A document-scrolled page: the surface runs on as tall as its
+      // content (the page scrolls, not the surface). Its chrome is fixed or
+      // sticky, so the browser itself keeps a focused field above the
+      // keyboard; while one is focused the home indicator's inset is dropped.
+      treeContainer.style.overflow = "visible";
+      treeContainer.style.bottom = "auto";
+      treeContainer.style.height = "auto";
+      treeContainer.style.minHeight = "100%";
+      treeContainer.dataset.uuiDocument = "1";
+      const editing = () => {
+        const active = document.activeElement;
+        return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+      };
+      const inset = () => treeContainer.style.setProperty("--uui-safe-bottom", editing() ? "0px" : "env(safe-area-inset-bottom, 0px)");
+      document.addEventListener("focusin", inset);
+      document.addEventListener("focusout", () => setTimeout(inset, 0));
+      inset();
+    } else if (window.visualViewport && canvas.parentElement === document.body) {
       const viewport = window.visualViewport;
       // The surface follows the keyboard both ways with the same easing
       // (Safari animates the viewport in, not out), and the home-indicator
@@ -166,7 +188,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=2502508894");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1807176032");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -209,6 +231,7 @@ export async function boot({
       container: treeContainer,
       sendEvent: (id, value) => bridge.uuiHostEvent(id, value),
       mapSurface,
+      documentScroll,
     });
     // Event injection for headless smoke tests (cf. __uuiHostViews).
     window.__uuiSendEvent = (id, value) => bridge.uuiHostEvent(id, value);
@@ -515,7 +538,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=2502508894"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=1807176032"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 

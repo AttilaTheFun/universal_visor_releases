@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=2502508894";
-import { storeFiles } from "./imported_files.js?v=2502508894";
+import { SYMBOLS } from "./symbols.js?v=1807176032";
+import { storeFiles } from "./imported_files.js?v=1807176032";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -35,7 +35,7 @@ function symbolSVG(h, name, size, color, weight, extraStyle, secondary) {
      entry.inner ? h("path", { key: "i", d: entry.inner, fill: "none", stroke: secondary ? "currentColor" : "var(--uui-symbol-contrast, #fff)", strokeWidth: 2.2 }) : null);
 }
 
-export function createReactTreeRenderer({ container, sendEvent, assetBase = "assets/", mapSurface = null }) {
+export function createReactTreeRenderer({ container, sendEvent, assetBase = "assets/", mapSurface = null, documentScroll = false }) {
   const R = window.React;
   const SYSTEM_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
   const MONO_FONT = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
@@ -80,8 +80,16 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // The page itself never scrolls or rubber-bands (a phone browser's
       // overscroll dragged the bars with the document); only our scroll
       // containers scroll, and they do not chain to the page at their ends.
-      "html{overscroll-behavior:none;overflow:hidden;height:100%}" +
-      "body{overscroll-behavior:none;overflow:hidden;position:fixed;inset:0;width:100%;height:100dvh;margin:0}" +
+      // A document-scrolled page is the exception: the page is what scrolls.
+      (documentScroll
+        ? "html{height:100%}body{margin:0;min-height:100%}" +
+          // Everything around the document-scrolled screen's scroll takes
+          // its content's height (at least the viewport's), so the page is
+          // as long as the screen's content and sticky chrome in it travels
+          // the whole page.
+          "[data-uui-document] :has([data-document-scroll]){flex:1 0 auto!important;min-height:auto!important;height:auto!important;max-height:none!important}"
+        : "html{overscroll-behavior:none;overflow:hidden;height:100%}" +
+          "body{overscroll-behavior:none;overflow:hidden;position:fixed;inset:0;width:100%;height:100dvh;margin:0}") +
       "[data-edge-scroll],.uui-sheet-body,[data-uui-scroll]{overscroll-behavior:contain}" +
       ".uui-no-sep::after{display:none!important}" +
       // A grouped cell's fill, for a list outside a grouped container too
@@ -864,14 +872,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       rows.push(h(pinned ? "div" : R.Fragment, pinned ? {
         key: "bar",
         style: {
-          position: "absolute", top: 0, left: 0, right: 0, zIndex: 5, overflow: "visible",
+          // Fixed over a document-scrolled page, which scrolls under it.
+          position: docScroll() ? "fixed" : "absolute", top: 0, left: 0, right: 0, zIndex: 5, overflow: "visible",
+          ...(docScroll() ? { textShadow: `0 0 10px ${dark ? "#000" : "#fff"}, 0 0 4px ${dark ? "#000" : "#fff"}` } : {}),
           paddingTop: SAFE_TOP, boxSizing: "border-box",
         },
       } : { key: "bar" },
         // The scroll-edge effect: content passing under the bar is frosted
         // by a layer of its own that fades out at the bottom, so the bar
         // has no fill, no hairline and no hard edge over the first row.
-        pinned ? h("div", {
+        // (Not on a document-scrolled page: Safari paints its status bar
+        // solid behind any fixed chrome with a fill or a backdrop blur at
+        // the page's top edge, hiding the content that should run under it;
+        // there the bar is its buttons and title alone, the title with a
+        // halo, and Safari's own scroll edge frosts the top.)
+        pinned && !docScroll() ? h("div", {
           key: "frost",
           style: {
             position: "absolute", inset: 0, pointerEvents: "none",
@@ -1422,6 +1437,16 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   const isDesktop = () => window.innerWidth >= 700;
   // How many split-view sidebar columns enclose the rows being rendered.
   let inSidebar = 0;
+  // Document scrolling (a phone-width page, opted in with `documentScroll`):
+  // the screen's edge scroll is the page's own scroll, as a web page's is —
+  // the browser scrolls the document (its bars collapse, content runs under
+  // them and behind the keyboard), and the screen's chrome is fixed over it.
+  // Presentations (sheets) keep scrolling inside themselves.
+  let presentationDepth = 0;
+  const docScroll = () => documentScroll && !isDesktop() && presentationDepth === 0;
+  // Where each document-scrolled screen was, by its scroll's identity, so
+  // moving between screens (they share the page's one scroll) comes back.
+  const documentScrollPositions = new Map();
   // The list idiom the rows being rendered belong to ("insetGrouped" while
   // a compact list's rows render, as on an iPhone; "sidebar" in a wide
   // split view's sidebar column; plain rows otherwise).
@@ -1494,12 +1519,13 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // `.safeAreaInset(edge: .bottom/.top)`: the inset is chrome pinned at
   // that edge (translucent, extending into the device's safe area); its
   // measured height is the inset the content beneath it flows under.
-  function InsetStack({ n, style, kids, edge, hasEdgeScroll }) {
+  function InsetStack({ n, style, kids, edge, hasEdgeScroll, fixed }) {
     const ref = R.useRef(null);
     const barRef = R.useRef(null);
     R.useLayoutEffect(() => {
       const container = ref.current, bar = barRef.current;
-      if (!container || !bar) return undefined;
+      // Document-scrolled, the bar is in the page's flow (sticky): no inset.
+      if (!container || !bar || fixed) return undefined;
       const name = edge === "top" ? "--uui-inset-top" : "--uui-inset-bottom";
       const apply = () => container.style.setProperty(name, `${bar.getBoundingClientRect().height}px`);
       apply();
@@ -1507,14 +1533,18 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       const observer = new ResizeObserver(apply);
       observer.observe(bar);
       return () => observer.disconnect();
-    }, [edge]);
+    }, [edge, fixed]);
     const contentIndex = edge === "top" ? 1 : 0;
     const insetIndex = edge === "top" ? 0 : 1;
     const bar = h("div", {
       key: "inset",
       ref: barRef,
       style: {
-        position: "absolute", left: 0, right: 0, zIndex: 5,
+        // On a document-scrolled page the bar is in the page's flow, after
+        // (or before) the content, and sticks to the viewport's edge as the
+        // page scrolls; at the page's end it rests there, and a focused
+        // field in it is scrolled above the keyboard by the browser itself.
+        position: fixed ? "sticky" : "absolute", left: 0, right: 0, zIndex: 5,
         [edge === "top" ? "top" : "bottom"]: 0,
         display: "flex", flexDirection: "column", alignItems: "stretch",
         boxSizing: "border-box",
@@ -1527,6 +1557,20 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         // wants (a composer pill), and the scroll shows through around it.
       },
     }, kids[insetIndex]);
+    if (fixed) {
+      // As tall as the content plus the bar (not the viewport): the page
+      // scrolls through it, with the bar stuck to the viewport's edge. At
+      // least the viewport's height, so a short screen's bar still sits at
+      // the bottom.
+      const content = h("div", { key: "content", style: { display: "flex", flexDirection: "column", flex: "1 0 auto", minWidth: 0, width: "100%", "--uui-inset-bottom": "0px" } }, kids[contentIndex]);
+      return h("div", {
+        ref,
+        style: {
+          ...style, flex: "none", height: "auto", minHeight: "100%", display: "flex", flexDirection: "column",
+          position: "relative", minWidth: 0, alignSelf: "stretch",
+        },
+      }, edge === "top" ? [bar, content] : [content, bar]);
+    }
     return h("div", {
       ref,
       style: {
@@ -1540,7 +1584,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // request ("id|tick|anchor") to every scroll; the one holding a view with
   // that id brings it to the anchor, once per request, after the render
   // that carries it has laid out.
-  function applyScrollRequest(el, request, applied) {
+  function applyScrollRequest(el, request, applied, doc) {
     if (!el || !request) return;
     const [target, tick, anchor] = request.split("|");
     if (applied.current === tick) return;
@@ -1552,7 +1596,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     // chrome over the scroll reserves (a bar, the composer), as iOS measures
     // inside the content insets.
     const cs = getComputedStyle(el);
-    const outer = el.getBoundingClientRect();
+    // A document-scrolled screen is measured against the window.
+    const outer = doc ? { top: 0, bottom: window.innerHeight } : el.getBoundingClientRect();
     const box = { top: outer.top + (parseFloat(cs.scrollPaddingTop) || 0), bottom: outer.bottom - (parseFloat(cs.scrollPaddingBottom) || 0) };
     box.height = box.bottom - box.top;
     const r = node.getBoundingClientRect();
@@ -1561,13 +1606,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     else if (anchor === "top") delta = r.top - box.top;
     else if (anchor === "center") delta = (r.top + r.height / 2) - (box.top + box.height / 2);
     else delta = r.top < box.top ? r.top - box.top : (r.bottom > box.bottom ? r.bottom - box.bottom : 0);
-    el.scrollTop += delta;
+    if (doc) window.scrollBy(0, delta);
+    else el.scrollTop += delta;
   }
 
   // A lazy List: report the rows on screen ("first,last" among the list's
   // cells) after each render and as it scrolls, so the guest builds the
   // rows around them.
-  function useListWindow(ref, windowId) {
+  function useListWindow(ref, windowId, doc) {
     const reported = R.useRef("");
     const pending = R.useRef(false);
     const report = () => {
@@ -1575,7 +1621,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       if (!el || !windowId) return;
       const cells = [...el.querySelectorAll("[data-uui-cell]")].filter((c) => c.closest("[data-uui-scroll]") === el);
       if (!cells.length) return;
-      const box = el.getBoundingClientRect();
+      const box = doc ? { top: 0, bottom: window.innerHeight } : el.getBoundingClientRect();
       // Binary search: the first cell reaching below the top, the last
       // starting above the bottom.
       const firstBelow = (y) => {
@@ -1599,25 +1645,47 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     };
   }
 
-  function RequestedScroll({ divProps, children, request, windowId }) {
+  function RequestedScroll({ divProps, children, request, windowId, doc, id }) {
     const ref = R.useRef(null);
     const applied = R.useRef(null);
-    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied));
-    const onWindowScroll = useListWindow(ref, windowId);
+    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied, doc));
+    const onWindowScroll = useListWindow(ref, windowId, doc);
+    // Document-scrolled: the page's scroll is this screen's while it is
+    // shown — back where it was, and reporting as the page scrolls.
+    R.useLayoutEffect(() => {
+      if (!doc) return undefined;
+      window.scrollTo(0, documentScrollPositions.get(id) || 0);
+      const onScroll = () => { documentScrollPositions.set(id, window.scrollY); onWindowScroll(); };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return () => window.removeEventListener("scroll", onScroll);
+    }, [doc, id]);
     const onScroll = divProps.onScroll;
     return h("div", { ...divProps, ref, onScroll: (e) => { if (onScroll) onScroll(e); onWindowScroll(); } }, children);
   }
 
-  function BottomAnchoredScroll({ divProps, children, request, windowId }) {
+  function BottomAnchoredScroll({ divProps, children, request, windowId, doc }) {
     const ref = R.useRef(null);
     const applied = R.useRef(null);
-    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied));
-    const onWindowScroll = useListWindow(ref, windowId);
+    R.useLayoutEffect(() => applyScrollRequest(ref.current, request, applied, doc));
+    const onWindowScroll = useListWindow(ref, windowId, doc);
     const pinned = R.useRef(true);
     const pin = () => {
       const el = ref.current;
-      if (el && pinned.current) el.scrollTop = el.scrollHeight;
+      if (!el || !pinned.current) return;
+      if (doc) window.scrollTo(0, document.documentElement.scrollHeight);
+      else el.scrollTop = el.scrollHeight;
     };
+    // Document-scrolled: the page's scroll moves the pin.
+    R.useEffect(() => {
+      if (!doc) return undefined;
+      const onScroll = () => {
+        const page = document.documentElement;
+        pinned.current = window.scrollY + window.innerHeight >= page.scrollHeight - 4;
+        onWindowScroll();
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      return () => window.removeEventListener("scroll", onScroll);
+    }, [doc]);
     R.useLayoutEffect(pin);
     // The viewport shrinking (the soft keyboard) resizes the scroll without
     // a re-render: stay at the bottom through that too, as Messages does.
@@ -1625,14 +1693,19 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       const el = ref.current;
       if (!el) return undefined;
       const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(pin);
-      if (observer) observer.observe(el);
+      if (observer) {
+        observer.observe(el);
+        // Document-scrolled, the scroll keeps the viewport's size while its
+        // content grows past it: follow the content.
+        if (doc) for (const child of el.children) observer.observe(child);
+      }
       const viewport = window.visualViewport;
       if (viewport) viewport.addEventListener("resize", pin);
       return () => {
         if (observer) observer.disconnect();
         if (viewport) viewport.removeEventListener("resize", pin);
       };
-    }, []);
+    }, [doc]);
     return h("div", {
       ...divProps,
       ref,
@@ -2166,10 +2239,13 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
 
   function render(n, key, parentAxis) {
     renderDepth += 1;
+    const presented = n.k === "presentation";
+    if (presented) presentationDepth += 1;
     try {
       return renderNode(n, key, parentAxis);
     } finally {
       renderDepth -= 1;
+      if (presented) presentationDepth -= 1;
     }
   }
 
@@ -2348,7 +2424,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     switch (n.k) {
       case "stack": {
         if ((n.params || {}).inset && kids.length === 2) {
-          return h(InsetStack, { key, n, style: s, kids, edge: n.params.inset, hasEdgeScroll: ownsEdgeScroll });
+          return h(InsetStack, { key, n, style: s, kids, edge: n.params.inset, hasEdgeScroll: ownsEdgeScroll, fixed: docScroll() && ownsEdgeScroll });
         }
         if (n.axis === "z") {
           // Layers stretch over the whole stack; each aligns its child by
@@ -2466,6 +2542,15 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           s.minWidth = 0;
           s.overflowY = "auto";
         }
+        // The screen's edge scroll on a document-scrolled page: its content
+        // runs on past it into the page, and the page scrolls.
+        const documentScrolled = edgeScrolls.has(n) && docScroll();
+        if (documentScrolled) {
+          // As tall as its content: the page scrolls it.
+          s.overflowY = "visible";
+          s.flex = "1 0 auto";
+          props["data-document-scroll"] = "1";
+        }
         s.overscrollBehavior = "contain";
         props["data-uui-scroll"] = "1";
         if (edgeScrolls.has(n)) {
@@ -2473,6 +2558,8 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
           // and end here (nested scrolls are not under the chrome).
           const pad = n.padding || [0, 0, 0, 0];
           s.paddingTop = `calc(${Number(pad[0]) || 0}px + ${INSET_TOP})`;
+          // (Document-scrolled, it also clears the keyboard, which covers
+          // the page's end: the last row can come up above the composer.)
           s.paddingBottom = `calc(${Number(pad[2]) || 0}px + ${INSET_BOTTOM})`;
           s.scrollPaddingTop = INSET_TOP;
           s.scrollPaddingBottom = INSET_BOTTOM;
@@ -2510,9 +2597,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         const request = (n.params || {}).scrollTo;
         const windowId = (n.params || {}).window;
         if ((n.params || {}).anchor === "bottom") {
-          return h(BottomAnchoredScroll, { key, divProps: props, request, windowId }, kids);
+          return h(BottomAnchoredScroll, { key, divProps: props, request, windowId, doc: documentScrolled }, kids);
         }
-        if (request || windowId) return h(RequestedScroll, { key, divProps: props, request, windowId }, kids);
+        if (request || windowId || documentScrolled) return h(RequestedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key }, kids);
         return h("div", props, kids);
       case "image": {
         const src = /^(https?:|data:|blob:)/.test(n.src) ? n.src : assetBase + n.src + (n.src.includes(".") ? "" : ".png");
