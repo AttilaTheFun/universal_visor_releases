@@ -10,6 +10,20 @@
 
 export function browserPlatformServices(Dependencies, options = {}) {
   const sandbox = options.sandbox || "isomer.";
+  // The default sandbox was "universalui." before the framework's rename:
+  // what a page saved under it moves across, once.
+  if (!options.sandbox) {
+    try {
+      const former = "universalui.";
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) { const key = localStorage.key(i); if (key && key.startsWith(former)) keys.push(key); }
+      for (const key of keys) {
+        const moved = sandbox + key.slice(former.length);
+        if (localStorage.getItem(moved) === null) localStorage.setItem(moved, localStorage.getItem(key));
+        localStorage.removeItem(key);
+      }
+    } catch (_) { /* storage unavailable */ }
+  }
   const flags = options.flags || {};
   const encoder = new TextEncoder(), decoder = new TextDecoder();
   const toBase64 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
