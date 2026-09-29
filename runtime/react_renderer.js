@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=882807454";
-import { storeFiles } from "./imported_files.js?v=882807454";
+import { SYMBOLS } from "./symbols.js?v=2294914775";
+import { storeFiles } from "./imported_files.js?v=2294914775";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -249,7 +249,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // travel ("changed:x,y" / "ended:x,y") and a pinch the spread of two
       // fingers since it began ("changed:m" / "ended:m"). A trackpad pinch
       // arrives as ctrl+wheel, and ends once it pauses.
-      if (magnify) s.touchAction = "none";
+      if (magnify) props.style = { ...(props.style || {}), touchAction: "none" };
       const state = (el) => (el.__uuiGesture ||= { points: new Map(), start: null, spread: null, zoom: 1, moved: { x: 0, y: 0 } });
       const centroid = (points) => {
         let x = 0, y = 0;
