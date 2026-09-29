@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=2006440745";
-import { storeFiles } from "./imported_files.js?v=2006440745";
+import { SYMBOLS } from "./symbols.js?v=882807454";
+import { storeFiles } from "./imported_files.js?v=882807454";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -57,6 +57,11 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       "border-color:color-mix(in srgb,currentColor 22%,transparent);" +
       "border-top-color:color-mix(in srgb,currentColor 85%,transparent);" +
       "animation:uui-spin 0.8s linear infinite}" +
+      // A chat's rows (a bottom-anchored list) are laid out for real, off
+      // screen too: sized by the 44pt estimate, a thread opening at its end
+      // pinned against the estimates, then its last rows took their real
+      // heights and the text under the reader moved.
+      ".uui-anchor-bottom [data-uui-cell]{content-visibility:visible !important}" +
       ".uui-tap{transition:background-color 0.12s}" +
       ".uui-bar-item:hover{background:rgba(120,120,128,0.16) !important}" +
       ".uui-bar-item:active{background:rgba(120,120,128,0.26) !important}" +
@@ -1636,9 +1641,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // A lazy List: report the rows on screen ("first,last" among the list's
   // cells) after each render and as it scrolls, so the guest builds the
   // rows around them.
-  function useListWindow(ref, windowId, doc) {
+  // `rows` is the row count of the build these cells came from, echoed back
+  // so the guest can tell a report about rows it has since replaced (a
+  // thread's loading rows, reported after its transcript arrived).
+  function useListWindow(ref, windowId, doc, rows) {
     const reported = R.useRef("");
     const pending = R.useRef(false);
+    const rowsRef = R.useRef(rows);
+    rowsRef.current = rows;
     const report = () => {
       const el = ref.current;
       if (!el || !windowId) return;
@@ -1657,7 +1667,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       };
       const first = firstBelow(box.top);
       const last = Math.max(first, firstBelow(box.bottom));
-      const value = `${first},${last}`;
+      const value = rowsRef.current != null ? `${first},${last},${rowsRef.current}` : `${first},${last}`;
       if (value !== reported.current) { reported.current = value; sendEvent(windowId, value); }
     };
     R.useLayoutEffect(report);
@@ -1675,10 +1685,9 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // up). One component whatever the anchor, so the anchor changing (AgentUI
   // holds the top for the moment rows are appended, then scrolls down to
   // them) keeps the scroll and its rows rather than building them again.
-  function ManagedScroll({ divProps, children, request, windowId, doc, id, bottom, epoch }) {
+  function ManagedScroll({ divProps, children, request, windowId, doc, id, bottom, epoch, rows }) {
     const ref = R.useRef(null);
     const applied = R.useRef(null);
-    const onWindowScroll = useListWindow(ref, windowId, doc);
     const anchored = R.useRef(bottom);
     anchored.current = bottom;
     const pinned = R.useRef(true);
@@ -1733,6 +1742,12 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       const el = ref.current, watch = observer.current;
       if (el && watch) for (const child of el.children) watch.observe(child);
     });
+    // The rows shown are reported after the pin above has moved the scroll
+    // (layout effects run in order): reported before it, a thread opening
+    // at its end reported its top — where the loading rows had left the
+    // scroll — and the guest built the top, leaving the end as placeholders
+    // for a frame.
+    const onWindowScroll = useListWindow(ref, windowId, doc, rows);
     // Set up before the first paint, so a list whose rows land in the
     // frames right after it appears is followed from the start.
     R.useLayoutEffect(() => {
@@ -1755,6 +1770,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     return h("div", {
       ...divProps,
       ref,
+      className: bottom ? ((divProps.className || "") + " uui-anchor-bottom").trim() : divProps.className,
       onScroll: (e) => {
         const el = e.currentTarget;
         if (!doc) track(el.scrollTop, el.scrollHeight - el.clientHeight);
@@ -2684,7 +2700,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         const windowId = (n.params || {}).window;
         const bottom = (n.params || {}).anchor === "bottom";
         if (bottom || request || windowId || documentScrolled) {
-          return h(ManagedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key, bottom, epoch: (n.params || {}).epoch }, kids);
+          return h(ManagedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key, bottom, epoch: (n.params || {}).epoch, rows: (n.params || {}).rows }, kids);
         }
         return h("div", props, kids);
       case "image": {
