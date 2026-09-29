@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=1006529590";
-import { storeFiles } from "./imported_files.js?v=1006529590";
+import { SYMBOLS } from "./symbols.js?v=4218463887";
+import { storeFiles } from "./imported_files.js?v=4218463887";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -2597,6 +2597,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         s.fontWeight = n.weight;
         s.color = rgba(n.color);
         s.whiteSpace = "pre-wrap";
+        // Text with nowhere to break (a URL, a path) breaks where the line
+        // ends, as SwiftUI's does, rather than running past its container
+        // (and widening the page). Text that has such a run may also be
+        // squeezed by its row to the width there is (`anywhere`); ordinary
+        // words keep their width, so a label beside it is not broken in
+        // the middle of a word to make room.
+        if (/\S{20,}/.test(n.v || "")) s.overflowWrap = "anywhere";
+        else { s.overflowWrap = "break-word"; s.minWidth = "min-content"; }
         s.fontFamily = (n.params && n.params.mono === "1") ? MONO_FONT : SYSTEM_FONT;
         // `.multilineTextAlignment` reaches the text itself.
         if (n.alignH === "center") s.textAlign = "center";
