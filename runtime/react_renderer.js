@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=4007312427";
-import { storeFiles } from "./imported_files.js?v=4007312427";
+import { SYMBOLS } from "./symbols.js?v=2906139009";
+import { storeFiles } from "./imported_files.js?v=2906139009";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -47,8 +47,15 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     style.id = "uui-react-style";
     style.textContent =
       "@keyframes uui-spin{to{transform:rotate(1turn)}}" +
+      // The spinner in the text's own colour, as iOS draws it in the
+      // secondary label's: a faint track and a stronger head, so it reads on
+      // a dark page and turns white on a selected row (a fixed mid-grey was
+      // all but invisible on both). The fixed grey stays for browsers without
+      // color-mix.
       ".uui-spinner{width:22px;height:22px;border-radius:50%;flex:none;" +
       "border:2.5px solid rgba(120,120,128,0.3);border-top-color:rgba(120,120,128,0.9);" +
+      "border-color:color-mix(in srgb,currentColor 22%,transparent);" +
+      "border-top-color:color-mix(in srgb,currentColor 85%,transparent);" +
       "animation:uui-spin 0.8s linear infinite}" +
       ".uui-tap{transition:background-color 0.12s}" +
       ".uui-bar-item:hover{background:rgba(120,120,128,0.16) !important}" +
