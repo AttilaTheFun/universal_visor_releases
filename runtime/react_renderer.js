@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=500178237";
-import { storeFiles } from "./imported_files.js?v=500178237";
+import { SYMBOLS } from "./symbols.js?v=1571554764";
+import { storeFiles } from "./imported_files.js?v=1571554764";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -2042,12 +2042,21 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       style: { width, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: "#fff", fontFamily: MENU_FONT, fontSize: 13, cursor: "pointer",
         background: item.destructive ? "#ff3b30" : (i === 0 ? (side === "t" ? "#ff9500" : "#34c759") : "#8e8e93") },
     }, [item.symbol ? (symbolSVG(h, item.symbol, 18, "#fff", 400, { verticalAlign: "0" }) || h("span", { key: "g", style: { fontSize: 18 } }, symbolGlyph(item.symbol))) : null, h("span", { key: "t" }, item.title)]);
-    const outer = { position: "relative", overflow: "hidden", touchAction: "pan-y" };
+    // The wrapper is the row in its parent's layout (it takes the node's
+    // growth and stretch; content-sized, a row of text and a spacer sat
+    // centred in its cell), and the content fills the wrapper.
+    const layout = {};
+    for (const key of ["flex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "width", "minWidth", "maxWidth", "gridArea", "gridRow", "gridColumn"]) {
+      if (divProps.style[key] !== undefined) layout[key] = divProps.style[key];
+    }
+    const outer = { ...layout, position: "relative", overflow: "hidden", touchAction: "pan-y", display: "flex", flexDirection: "column", alignItems: "stretch" };
     // The buttons exist only while revealed (a closed row is just its content).
     return h("div", { style: outer, onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp },
       dx > 0 && leading.length ? h("div", { key: "l", style: { position: "absolute", left: 0, top: 0, bottom: 0, display: "flex", width: dx } }, leading.map((it, i) => button(it, i, "l"))) : null,
       dx < 0 && trailing.length ? h("div", { key: "r", style: { position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", justifyContent: "flex-end", width: -dx } }, trailing.map((it, i) => button(it, i, "t"))) : null,
-      h("div", { key: "c", ...divProps, style: { ...divProps.style, transform: dx ? `translateX(${dx}px)` : undefined, transition: drag.current.active ? "none" : "transform 0.2s ease-out", background: divProps.style.background || "var(--uui-cell-bg, #fff)" } }, children));
+      h("div", { key: "c", ...divProps, style: { ...divProps.style, alignSelf: "stretch", flex: "1 1 auto", transform: dx ? `translateX(${dx}px)` : undefined, transition: drag.current.active ? "none" : "transform 0.2s ease-out", // Opaque only while it slides over the buttons: at rest the row is
+        // its cell's ground, whatever that is.
+        background: divProps.style.background || (dx ? "var(--uui-cell-bg, Canvas)" : undefined) } }, children));
   }
 
   /// A concatenated Text's spans: `length:flags[:r,g,b,a]` per run, ";"

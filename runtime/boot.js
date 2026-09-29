@@ -1,14 +1,14 @@
-// Boots a Universal UI wasm application through the swift_ffi bindings:
+// Boots a Isomer wasm application through the swift_ffi bindings:
 // `load()` instantiates the reactor (WASI shim included), a plain object
 // implements the Swift `WebHost` protocol, and the exported functions drive
 // the runtime. Strings and structs copy at the boundary, so there is no
 // pointer/length or staging-buffer plumbing here.
 
-import { importedFilesWasi } from "./imported_files.js?v=500178237";
-import { load } from "../app_bridge.js?v=500178237";
-import { createRasterHost } from "./raster.js?v=500178237";
-import { createReactTreeRenderer } from "./react_renderer.js?v=500178237";
-import { applyPatch } from "./flat_tree.js?v=500178237";
+import { importedFilesWasi } from "./imported_files.js?v=1571554764";
+import { load } from "../app_bridge.js?v=1571554764";
+import { createRasterHost } from "./raster.js?v=1571554764";
+import { createReactTreeRenderer } from "./react_renderer.js?v=1571554764";
+import { applyPatch } from "./flat_tree.js?v=1571554764";
 
 // `rendererName` picks the renderer (docs/renderer_layers.md): "webGPU"
 // (default) binds the self-drawing SwiftGPURenderer; "react" binds the
@@ -56,7 +56,7 @@ export async function boot({
     // static import would put swift_gpu's executor on EVERY page's critical
     // module graph (an unresolved ES module import evaluates NOTHING —
     // rendering as a silent blank page when the file isn't served).
-    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=500178237");
+    const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1571554764");
     gpuHost = await createSwiftGPUHost(canvas);
     raster = createRasterHost({
       scale: window.devicePixelRatio || 1,
@@ -218,7 +218,7 @@ export async function boot({
               invalidate: () => scheduleRender(),
             });
           }
-          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=500178237");
+          const { createSwiftGPUHost } = await import("./swift_gpu_webgpu.js?v=1571554764");
           gpuHost = await createSwiftGPUHost(canvas);
           bridge.gpuConnect(gpuHost);
           bridge.uuiSetDisplayScale(window.devicePixelRatio || 1);
@@ -555,15 +555,15 @@ export async function boot({
   return { bridge };
 }
 
-// Incremental adoption (Level 3): mount a Universal UI surface inside an
+// Incremental adoption (Level 3): mount a Isomer surface inside an
 // existing web page — the web analogue of dropping a `UIHostingController`'s
 // view into a UIKit hierarchy. Boots the runtime into the host-provided
 // `container` (the Swift side decides the root via its `@main` App or a
-// `UniversalUIHostingController`) under the chosen renderer: "react" builds
+// `IsomerHostingController`) under the chosen renderer: "react" builds
 // real DOM/React components inside the container; "webGPU" draws into a
 // canvas that fills it. Container resizes re-lay-out the embedded view
 // independently of the window. Returns { bridge, unmount }.
-export async function mountUniversalUI(container, { wasmURL, bundle, renderer = "webGPU", dependencies = {}, wasi = undefined } = {}) {
+export async function mountIsomer(container, { wasmURL, bundle, renderer = "webGPU", dependencies = {}, wasi = undefined } = {}) {
   // The react tree / host-view overlays anchor to the container.
   if (getComputedStyle(container).position === "static") {
     container.style.position = "relative";
@@ -573,7 +573,7 @@ export async function mountUniversalUI(container, { wasmURL, bundle, renderer = 
   container.appendChild(canvas);
 
   const result = await boot({
-    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=500178237"),
+    canvas, wasmURL: bundle ? undefined : (wasmURL || "./app.wasm?v=1571554764"),
     bundle, rendererName: renderer, embedded: true, dependencies, wasi,
   });
 

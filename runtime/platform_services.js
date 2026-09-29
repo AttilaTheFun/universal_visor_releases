@@ -9,7 +9,7 @@
 //   const dependencies = browserPlatformServices(Dependencies, { sandbox: "myapp." });
 
 export function browserPlatformServices(Dependencies, options = {}) {
-  const sandbox = options.sandbox || "universalui.";
+  const sandbox = options.sandbox || "isomer.";
   const flags = options.flags || {};
   const encoder = new TextEncoder(), decoder = new TextDecoder();
   const toBase64 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };

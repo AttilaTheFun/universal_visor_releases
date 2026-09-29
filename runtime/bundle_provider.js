@@ -5,7 +5,7 @@
 //     or the newest previously-cached dynamic-delivery bundle, and
 //   • an async STREAM of newer bundles that arrive while running — a dev
 //     hot-reload shadow, or a production dynamic-delivery update. The React
-//     component (`<UniversalUI>`) re-instantiates the surface on each.
+//     component (`<Isomer>`) re-instantiates the surface on each.
 //
 // A bundle is `{ wasm: ArrayBuffer | Uint8Array, label: string, assets?: {} }`.
 // `assets` holds small co-versioned files (localized strings, tiny images);
