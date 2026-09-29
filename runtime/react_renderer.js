@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3268486519";
-import { storeFiles } from "./imported_files.js?v=3268486519";
+import { SYMBOLS } from "./symbols.js?v=4007312427";
+import { storeFiles } from "./imported_files.js?v=4007312427";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -1668,7 +1668,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
   // up). One component whatever the anchor, so the anchor changing (AgentUI
   // holds the top for the moment rows are appended, then scrolls down to
   // them) keeps the scroll and its rows rather than building them again.
-  function ManagedScroll({ divProps, children, request, windowId, doc, id, bottom }) {
+  function ManagedScroll({ divProps, children, request, windowId, doc, id, bottom, epoch }) {
     const ref = R.useRef(null);
     const applied = R.useRef(null);
     const onWindowScroll = useListWindow(ref, windowId, doc);
@@ -1676,6 +1676,14 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
     anchored.current = bottom;
     const pinned = R.useRef(true);
     const last = R.useRef({ top: 0, max: 0 });
+    // The list's rows replaced wholesale (another conversation in the same
+    // pane): a chat opens at its end, whatever the last one was scrolled to.
+    const seenEpoch = R.useRef(epoch);
+    if (epoch !== seenEpoch.current) {
+      seenEpoch.current = epoch;
+      pinned.current = true;
+      last.current = { top: 0, max: 0 };
+    }
     const pin = () => {
       const el = ref.current;
       if (!el || !anchored.current || !pinned.current) return;
@@ -1706,26 +1714,34 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       window.addEventListener("scroll", onScroll, { passive: true });
       return () => window.removeEventListener("scroll", onScroll);
     }, [doc, id]);
+    // The scroll resizing (the soft keyboard, the window) and its content
+    // growing without this component re-rendering (a memoized row's own
+    // update, a transcript's rows arriving): stay at the bottom through
+    // both before the frame is painted, as Messages does. Its children are
+    // observed afresh after every commit, as rows come and go.
+    const observer = R.useRef(null);
     R.useLayoutEffect(() => {
       applyScrollRequest(ref.current, request, applied, doc);
       pin();
+      const el = ref.current, watch = observer.current;
+      if (el && watch) for (const child of el.children) watch.observe(child);
     });
-    // The viewport shrinking (the soft keyboard) resizes the scroll without
-    // a re-render: stay at the bottom through that too, as Messages does.
-    R.useEffect(() => {
+    // Set up before the first paint, so a list whose rows land in the
+    // frames right after it appears is followed from the start.
+    R.useLayoutEffect(() => {
       const el = ref.current;
       if (!el) return undefined;
-      const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(pin);
-      if (observer) {
-        observer.observe(el);
-        // Document-scrolled, the scroll keeps the viewport's size while its
-        // content grows past it: follow the content.
-        if (doc) for (const child of el.children) observer.observe(child);
+      const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(pin);
+      observer.current = watch;
+      if (watch) {
+        watch.observe(el);
+        for (const child of el.children) watch.observe(child);
       }
       const viewport = window.visualViewport;
       if (viewport) viewport.addEventListener("resize", pin);
       return () => {
-        if (observer) observer.disconnect();
+        observer.current = null;
+        if (watch) watch.disconnect();
         if (viewport) viewport.removeEventListener("resize", pin);
       };
     }, [doc]);
@@ -2661,7 +2677,7 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
         const windowId = (n.params || {}).window;
         const bottom = (n.params || {}).anchor === "bottom";
         if (bottom || request || windowId || documentScrolled) {
-          return h(ManagedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key, bottom }, kids);
+          return h(ManagedScroll, { key, divProps: props, request, windowId, doc: documentScrolled, id: n.key || key, bottom, epoch: (n.params || {}).epoch }, kids);
         }
         return h("div", props, kids);
       case "image": {
