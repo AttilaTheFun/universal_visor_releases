@@ -12,8 +12,8 @@
 // Uses the React 18 UMD globals (window.React / window.ReactDOM), served
 // from the hermetic @react_umd repositories next to this bundle.
 
-import { SYMBOLS } from "./symbols.js?v=3387929879";
-import { storeFiles } from "./imported_files.js?v=3387929879";
+import { SYMBOLS } from "./symbols.js?v=1006529590";
+import { storeFiles } from "./imported_files.js?v=1006529590";
 
 /// An SF Symbol drawn from the portable table as an inline SVG sized to
 /// the text it stands in (an `Image(systemName:)` is a text node carrying
@@ -95,7 +95,13 @@ export function createReactTreeRenderer({ container, sendEvent, assetBase = "ass
       // A document-scrolled page is the exception: the page is what scrolls.
       // (boot.js puts `uui-document` on <html> while a phone-width page
       // scrolls as a document.)
-      "html.uui-document{height:100%}html.uui-document body{margin:0;min-height:100%}" +
+      // The page scrolls down its length only: nothing pans it sideways,
+      // not even to rubber-band (a phone browser pans a scrollable page on
+      // both axes under a finger). Clipped rather than hidden, so the page
+      // stays the scroll that sticky chrome sticks to; scrolls inside it
+      // that run sideways are their own and keep their pan.
+      "html.uui-document{height:100%;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom}" +
+      "html.uui-document body{margin:0;min-height:100%;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom}" +
       // Everything around the document-scrolled screen's scroll takes its
       // content's height (at least the viewport's), so the page is as long
       // as the screen's content and sticky chrome in it travels the page.
